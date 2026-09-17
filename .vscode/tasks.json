@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "restore",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["restore", "${workspaceFolder}/PlayMagic.slnx"],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/PlayMagic.slnx", "--configuration", "Debug", "--no-restore"],
+      "dependsOn": "restore",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build: Release",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/PlayMagic.slnx", "--configuration", "Release", "--no-restore"],
+      "dependsOn": "restore",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/PlayMagic.slnx", "--configuration", "Debug", "--no-build", "--no-restore"],
+      "dependsOn": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "${workspaceFolder}/src/PlayMagic/PlayMagic.csproj", "--configuration", "Debug", "--no-build", "--launch-profile", "https"],
+      "dependsOn": "build",
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

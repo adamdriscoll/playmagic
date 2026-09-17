@@ -1,0 +1,118 @@
+@page "/"
+@rendermode InteractiveServer
+@using PlayMagic.Data
+@using PlayMagic.Services
+@inject CardCatalogService Catalog
+@inject GameService Games
+@inject NavigationManager Navigation
+
+<PageTitle>PlayMagic · tabletop Magic with friends</PageTitle>
+
+<main class="site-shell">
+    <header class="site-header">
+        <a class="brand" href="/">✦ PlayMagic</a>
+        <span class="header-note">A simple shared tabletop for Magic</span>
+    </header>
+
+    <section class="hero">
+        <div class="hero-copy">
+            <div class="eyebrow">PLAY TOGETHER, ANYWHERE</div>
+            <h1>Your table.<br /><em>Your game.</em></h1>
+            <p>Bring a Moxfield deck, invite up to three friends, and play the way you would at a kitchen table.</p>
+
+            <div class="lobby-panel">
+                <h2>Start a game</h2>
+                <p>Pick a format. Share the game code after creating your table.</p>
+                <div class="segmented" role="group" aria-label="Game format">
+                    <button class="@(format == "Commander" ? "selected" : "")" @onclick='() => format = "Commander"'>Commander</button>
+                    <button class="@(format == "Regular" ? "selected" : "")" @onclick='() => format = "Regular"'>Regular</button>
+                </div>
+                <button class="primary-button" @onclick="CreateGame" disabled="@busy">Create game <span>↗</span></button>
+                <div class="join-line"><span>Have a code?</span><input aria-label="Game code" maxlength="8" placeholder="ENTER CODE" @bind="joinCode" @bind:event="oninput" /><button @onclick="JoinGame">Join →</button></div>
+                @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
+            </div>
+        </div>
+
+        <div class="card-feature">
+            <div class="feature-heading"><span>CARD DISCOVERY</span><span>✦</span></div>
+            @if (randomCard is null)
+            {
+                <div class="feature-placeholder">Loading a card from Scryfall…</div>
+            }
+            else
+            {
+                <div class="feature-card-wrap">
+                    @if (randomCard.ImageUrl is not null) { <img class="feature-card" src="@randomCard.ImageUrl" alt="@randomCard.Name" /> }
+                    else { <div class="feature-placeholder">@randomCard.Name</div> }
+                </div>
+                <h2>@randomCard.Name</h2>
+                <p>@randomCard.TypeLine</p>
+            }
+            <button class="outline-button" @onclick="NewRandomCard" disabled="@loadingCard">Surprise me <span>↻</span></button>
+        </div>
+    </section>
+
+    <section class="catalog-section">
+        <div><div class="eyebrow">THE CARD LIBRARY</div><h2>Find a card</h2><p>Search the local English Oracle catalog. Images load from Scryfall.</p></div>
+        <div class="search-area">
+            <div class="search-control"><input aria-label="Search cards" placeholder="Search card names…" @bind="searchTerm" @bind:event="oninput" @onkeydown="SearchOnEnter" /><button @onclick="Search">Search</button></div>
+            @if (searchResults is not null)
+            {
+                <div class="search-results">
+                    @if (searchResults.Count == 0) { <p>No cards found yet. The first catalog download may still be running.</p> }
+                    @foreach (var card in searchResults)
+                    {
+                        <button class="search-result" @onclick="() => ShowCard(card)"><span>@card.Name</span><small>@card.TypeLine</small></button>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+    <footer>Card data and images by <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. @catalogStatus</footer>
+</main>
+
+@code {
+    private CatalogCard? randomCard;
+    private List<CatalogCard>? searchResults;
+    private string format = "Commander";
+    private string joinCode = "";
+    private string searchTerm = "";
+    private string error = "";
+    private string catalogStatus = "";
+    private bool busy;
+    private bool loadingCard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        randomCard = await Catalog.GetRandomAsync();
+        var status = await Catalog.GetStatusAsync();
+        catalogStatus = status.Count > 0 ? $"{status.Count:N0} cards indexed." : "Card catalog is loading.";
+    }
+
+    private async Task NewRandomCard()
+    {
+        loadingCard = true;
+        try { randomCard = await Catalog.GetRandomAsync(); }
+        finally { loadingCard = false; }
+    }
+
+    private async Task CreateGame()
+    {
+        busy = true;
+        error = "";
+        try { Navigation.NavigateTo($"/game/{await Games.CreateAsync(format)}"); }
+        catch (GameActionException exception) { error = exception.Message; }
+        finally { busy = false; }
+    }
+
+    private void JoinGame()
+    {
+        var code = joinCode.Trim().ToUpperInvariant();
+        if (code.Length != 8) { error = "Enter an eight-character game code."; return; }
+        Navigation.NavigateTo($"/game/{Uri.EscapeDataString(code)}");
+    }
+
+    private async Task Search() => searchResults = await Catalog.SearchAsync(searchTerm);
+    private async Task SearchOnEnter(KeyboardEventArgs args) { if (args.Key == "Enter") await Search(); }
+    private void ShowCard(CatalogCard card) { randomCard = card; searchResults = null; }
+}

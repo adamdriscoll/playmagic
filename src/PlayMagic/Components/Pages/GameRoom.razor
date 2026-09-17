@@ -1,0 +1,246 @@
+@page "/game/{Id}"
+@rendermode InteractiveServer
+@implements IDisposable
+@using PlayMagic.Data
+@using PlayMagic.Services
+@inject GameService Games
+@inject GameNotifier Notifier
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ILogger<GameRoom> Logger
+
+<PageTitle>Game @Id · PlayMagic</PageTitle>
+
+<main class="site-shell game-shell">
+    <header class="site-header">
+        <a class="brand" href="/">✦ PlayMagic</a>
+        <a class="header-note" href="/">← Back to home</a>
+    </header>
+
+    @if (loading)
+    {
+        <div class="center-panel">Opening game @Id…</div>
+    }
+    else if (info is null)
+    {
+        <div class="center-panel"><h1>Game not found</h1><p>Check the eight-character code and try again.</p><a class="primary-button" href="/">Back to home</a></div>
+    }
+    else if (view is null)
+    {
+        <section class="join-page">
+            <div class="join-intro">
+                <div class="eyebrow">JOIN THE TABLE</div>
+                <h1>Game <em>@Id</em></h1>
+                <p>@info.Format · @info.PlayerCount of 4 seats taken</p>
+                <button class="outline-button" @onclick="CopyLink">Copy invite link ↗</button>
+                <p class="small-note">Share the code or the page link with your friends.</p>
+            </div>
+            <div class="join-form">
+                <h2>Take a seat</h2>
+                <label for="player-name">Your name</label>
+                <input id="player-name" maxlength="24" placeholder="What should we call you?" @bind="playerName" @bind:event="oninput" />
+                <label for="deck-name">Deck name <small>(optional)</small></label>
+                <input id="deck-name" maxlength="80" placeholder="What deck are you playing?" @bind="deckName" @bind:event="oninput" />
+                <label for="deck-url">Moxfield deck URL</label>
+                <input id="deck-url" type="url" placeholder="https://www.moxfield.com/decks/…" @bind="deckUrl" @bind:event="oninput" />
+                <details class="import-fallback" open="@showExport">
+                    <summary>Or paste a Moxfield text export</summary>
+                    <p>Moxfield sometimes blocks automatic deck imports. In Moxfield, open Export and copy the plain text list.</p>
+                    <textarea aria-label="Moxfield text export" rows="7" placeholder="1 Sol Ring&#10;1 Command Tower&#10;…" @bind="deckText" @bind:event="oninput"></textarea>
+                </details>
+                @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
+                <button class="primary-button" disabled="@busy" @onclick="Join">@(busy ? "Importing deck…" : "Join game →")</button>
+                <p class="small-note">Your seat stays in this browser. Your hand is visible only to you.</p>
+            </div>
+        </section>
+    }
+    else
+    {
+        <div class="game-toolbar">
+            <div><div class="eyebrow">@view.Format GAME</div><h1>Table <span>@Id</span></h1></div>
+            <div class="toolbar-actions"><span>@view.Players.Count / 4 players</span><button class="outline-button" @onclick="CopyLink">Copy invite link ↗</button></div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
+
+        <section class="players-grid">
+            @foreach (var player in view.Players.OrderBy(player => player.Id == view.MyPlayerId ? 1 : 0))
+            {
+                var isMe = player.Id == view.MyPlayerId;
+                <article class="player-board @(isMe ? "my-board" : "")">
+                    <div class="player-heading">
+                        <div><span class="seat-tag">@(isMe ? "YOUR SEAT" : "OPPONENT")</span><h2>@player.Name</h2><small>@player.DeckName</small></div>
+                        <div class="life-control">
+                            @if (isMe) { <button aria-label="Lose one life" @onclick="() => ChangeLife(-1)">−</button> }
+                            <strong>@player.Life</strong>
+                            @if (isMe) { <button aria-label="Gain one life" @onclick="() => ChangeLife(1)">+</button> }
+                            <span>LIFE</span>
+                        </div>
+                    </div>
+                    <div class="player-meta">
+                        <span>Library <b>@player.LibraryCount</b></span><span>Hand <b>@player.HandCount</b></span>
+                        @foreach (var counter in player.Counters) { <span>@counter.Key <b>@counter.Value</b></span> }
+                    </div>
+                    @if (isMe)
+                    {
+                        <div class="player-actions"><button @onclick="Draw">Draw 1</button><button @onclick="Shuffle">Shuffle library</button><input aria-label="Player counter name" placeholder="Counter name" @bind="playerCounterName" @bind:event="oninput" /><button @onclick="() => ChangePlayerCounter(1)">+ counter</button><button @onclick="() => ChangePlayerCounter(-1)">− counter</button></div>
+                    }
+                    <div class="battlefield drop-zone" @ondragover:preventDefault="true" @ondrop="() => Drop(CardZones.Battlefield)">
+                        <div class="zone-title">BATTLEFIELD <span>Drop cards here</span></div>
+                        <div class="cards-row">
+                            @foreach (var card in player.Cards.Where(card => card.Zone == CardZones.Battlefield))
+                            {
+                                <div class="game-card @(card.Tapped ? "tapped" : "") @(selected?.Id == card.Id ? "active-card" : "")" data-card-id="@card.Id" draggable="@(isMe ? "true" : "false")" @onclick="() => Select(card)">
+                                    @if (card.ImageUrl is not null) { <img src="@card.ImageUrl" alt="@card.Name" /> } else { <span>@card.Name</span> }
+                                    @if (card.Counters.Count > 0) { <div class="card-counter-badges">@foreach (var counter in card.Counters) { <span>@counter.Key @counter.Value</span> }</div> }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="small-zones">
+                        @foreach (var zone in new[] { CardZones.Graveyard, CardZones.Exile })
+                        {
+                            <div class="small-zone drop-zone" @ondragover:preventDefault="true" @ondrop="() => Drop(zone)">
+                                <div class="zone-title">@zone.ToUpperInvariant() <span>@player.Cards.Count(card => card.Zone == zone)</span></div>
+                                <div class="cards-row">
+                                    @foreach (var card in player.Cards.Where(card => card.Zone == zone))
+                                    {
+                                        <div class="game-card mini @(selected?.Id == card.Id ? "active-card" : "")" data-card-id="@card.Id" draggable="@(isMe ? "true" : "false")" @onclick="() => Select(card)">
+                                            @if (card.ImageUrl is not null) { <img src="@card.ImageUrl" alt="@card.Name" /> } else { <span>@card.Name</span> }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </article>
+            }
+        </section>
+
+        @if (MyPlayer is { } me)
+        {
+            <section class="hand-panel drop-zone" @ondragover:preventDefault="true" @ondrop="() => Drop(CardZones.Hand)">
+                <div class="hand-heading"><div><span class="eyebrow">PRIVATE AREA</span><h2>Your hand <span>@me.HandCount</span></h2></div><div class="library-drop drop-zone" @ondragover:preventDefault="true" @ondrop:stopPropagation="true" @ondrop="() => Drop(CardZones.Library)">Drop here to put a card on top of your library</div></div>
+                <div class="hand-cards">
+                    @foreach (var card in me.Cards.Where(card => card.Zone == CardZones.Hand))
+                    {
+                        <div class="game-card hand-card @(selected?.Id == card.Id ? "active-card" : "")" data-card-id="@card.Id" draggable="true" @onclick="() => Select(card)">
+                            @if (card.ImageUrl is not null) { <img src="@card.ImageUrl" alt="@card.Name" /> } else { <span>@card.Name</span> }
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (selected is not null)
+        {
+            <aside class="card-inspector">
+                <button class="close-button" aria-label="Close card details" @onclick="() => selected = null">×</button>
+                @if (selected.ImageUrl is not null) { <img src="@selected.ImageUrl" alt="@selected.Name" /> }
+                <div><div class="eyebrow">CARD DETAILS</div><h2>@selected.Name</h2><p>@selected.TypeLine</p><p class="oracle-text">@selected.OracleText</p>
+                    @if (selected.BackImageUrl is not null) { <a href="@selected.BackImageUrl" target="_blank" rel="noopener">View back face ↗</a> }
+                    @if (IsMyCard)
+                    {
+                        <div class="inspector-actions">
+                            @if (selected.Zone == CardZones.Battlefield) { <button @onclick="TapSelected">@(selected.Tapped ? "Untap" : "Tap")</button> }
+                            @foreach (var zone in new[] { CardZones.Battlefield, CardZones.Hand, CardZones.Library, CardZones.Graveyard, CardZones.Exile })
+                            {
+                                if (zone != selected.Zone) { <button @onclick="() => MoveSelected(zone)">To @zone</button> }
+                            }
+                        </div>
+                        <div class="counter-editor"><input aria-label="Card counter name" placeholder="Counter name (e.g. +1/+1)" @bind="cardCounterName" @bind:event="oninput" /><button @onclick="() => ChangeCardCounter(1)">+</button><button @onclick="() => ChangeCardCounter(-1)">−</button></div>
+                        @foreach (var counter in selected.Counters) { <span class="counter-pill">@counter.Key: @counter.Value</span> }
+                    }
+                </div>
+            </aside>
+        }
+    }
+    <footer>Card data and images by <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>.</footer>
+</main>
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    private GameInfo? info;
+    private GameView? view;
+    private CardView? selected;
+    private IDisposable? subscription;
+    private string? token;
+    private string playerName = "";
+    private string deckName = "";
+    private string deckUrl = "";
+    private string deckText = "";
+    private string playerCounterName = "Poison";
+    private string cardCounterName = "+1/+1";
+    private string error = "";
+    private bool showExport;
+    private bool busy;
+    private bool loading = true;
+    private PlayerView? MyPlayer => view?.Players.FirstOrDefault(player => player.Id == view.MyPlayerId);
+    private bool IsMyCard => selected is not null && MyPlayer?.Cards.Any(card => card.Id == selected.Id) == true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Id = Id.Trim().ToUpperInvariant();
+        info = await Games.GetInfoAsync(Id);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        token = await JS.InvokeAsync<string?>("playMagic.getToken", Id);
+        if (token is not null) view = await Games.GetViewAsync(Id, token);
+        subscription = Notifier.Subscribe(Id, () => _ = InvokeAsync(async () => { await Refresh(); StateHasChanged(); }));
+        loading = false;
+        StateHasChanged();
+    }
+
+    private async Task Join()
+    {
+        busy = true;
+        error = "";
+        try
+        {
+            token = await Games.JoinAsync(Id, playerName, deckUrl, deckText, deckName);
+            await JS.InvokeVoidAsync("playMagic.setToken", Id, token);
+            await Refresh();
+        }
+        catch (DeckImportException exception) { error = exception.Message; showExport = true; }
+        catch (GameActionException exception) { error = exception.Message; }
+        catch (HttpRequestException) { error = "Could not reach Moxfield. Paste a text export to join."; showExport = true; }
+        catch (Exception exception) { Logger.LogError(exception, "Could not join game {GameId}", Id); error = "Could not join this game. Please try again."; }
+        finally { busy = false; }
+    }
+
+    private async Task Refresh()
+    {
+        if (token is null) { info = await Games.GetInfoAsync(Id); return; }
+        view = await Games.GetViewAsync(Id, token);
+        if (selected is not null)
+            selected = view?.Players.SelectMany(player => player.Cards).FirstOrDefault(card => card.Id == selected.Id);
+    }
+
+    private Task CopyLink() => JS.InvokeVoidAsync("playMagic.copyLink", Navigation.Uri).AsTask();
+    private async Task Drop(string zone)
+    {
+        var cardId = await JS.InvokeAsync<string?>("playMagic.getDraggedCardId");
+        if (cardId is null) return;
+        await Act(() => Games.MoveCardAsync(Id, token!, cardId, zone));
+        await JS.InvokeVoidAsync("playMagic.clearDraggedCardId");
+    }
+    private void Select(CardView card) => selected = card;
+    private Task Draw() => Act(() => Games.DrawAsync(Id, token!));
+    private Task Shuffle() => Act(() => Games.ShuffleAsync(Id, token!));
+    private Task ChangeLife(int delta) => Act(() => Games.AdjustLifeAsync(Id, token!, delta));
+    private Task ChangePlayerCounter(int delta) => Act(() => Games.AdjustPlayerCounterAsync(Id, token!, playerCounterName, delta));
+    private Task ChangeCardCounter(int delta) => selected is null ? Task.CompletedTask : Act(() => Games.AdjustCardCounterAsync(Id, token!, selected.Id, cardCounterName, delta));
+    private Task TapSelected() => selected is null ? Task.CompletedTask : Act(() => Games.ToggleTappedAsync(Id, token!, selected.Id));
+    private Task MoveSelected(string zone) => selected is null ? Task.CompletedTask : Act(() => Games.MoveCardAsync(Id, token!, selected.Id, zone));
+
+    private async Task Act(Func<Task> action)
+    {
+        error = "";
+        try { await action(); await Refresh(); }
+        catch (GameActionException exception) { error = exception.Message; }
+    }
+
+    public void Dispose() => subscription?.Dispose();
+}

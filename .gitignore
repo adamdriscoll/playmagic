@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+*.user
+src/PlayMagic/Data/*.db
+src/PlayMagic/Data/*.db-shm
+src/PlayMagic/Data/*.db-wal

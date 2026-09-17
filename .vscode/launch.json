@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "PlayMagic (HTTPS)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/PlayMagic/bin/Debug/net10.0/PlayMagic.dll",
+      "cwd": "${workspaceFolder}/src/PlayMagic",
+      "launchSettingsProfile": "https",
+      "launchSettingsFilePath": "${workspaceFolder}/src/PlayMagic/Properties/launchSettings.json",
+      "console": "internalConsole",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      }
+    }
+  ]
+}
