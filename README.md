@@ -12,6 +12,8 @@ Open the URL printed by `dotnet run`. On first startup the app downloads Scryfal
 
 The default SQLite path is under the app's `Data` directory. Set `ConnectionStrings__PlayMagic` to use another SQLite connection string. Schema migrations run at startup.
 
+The public `/stats` page shows cumulative game rooms created, games played, player joins, and cards loaded into decks, plus a format breakdown. A game is counted as played when its second player joins. These totals live in a separate counter table and remain after game cleanup. On upgrade, the migration initializes the counters from games still present in the database; previously pruned games cannot be recovered.
+
 ## Play
 
 1. Create a Commander or Regular game on the home page.

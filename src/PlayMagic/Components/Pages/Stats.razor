@@ -1,0 +1,69 @@
+@page "/stats"
+@using PlayMagic.Services
+@inject GameService Games
+
+<PageTitle>Community stats · PlayMagic</PageTitle>
+
+<main class="site-shell">
+    <header class="site-header">
+        <a class="brand" href="/">✦ PlayMagic</a>
+        <nav class="site-nav" aria-label="Main navigation">
+            <a href="/">Home</a>
+            <a href="/stats" aria-current="page">Stats</a>
+        </nav>
+    </header>
+
+    <section class="stats-intro">
+        <div class="eyebrow">AROUND THE TABLE</div>
+        <h1>Every game<br /><em>adds to the story.</em></h1>
+        <p>A running tally of games and decks shared on PlayMagic.</p>
+    </section>
+
+    <section class="stats-grid" aria-label="PlayMagic totals">
+        <article class="stat-card stat-primary">
+            <div class="stat-label">GAMES PLAYED</div>
+            <strong>@stats.GamesPlayed.ToString("N0")</strong>
+            <p>Tables where at least two players joined.</p>
+        </article>
+        <article class="stat-card">
+            <div class="stat-label">GAME ROOMS CREATED</div>
+            <strong>@stats.GamesCreated.ToString("N0")</strong>
+            <p>Every Commander and Regular room opened.</p>
+        </article>
+        <article class="stat-card">
+            <div class="stat-label">PLAYER SEATS FILLED</div>
+            <strong>@stats.PlayersJoined.ToString("N0")</strong>
+            <p>Each successful deck import and join.</p>
+        </article>
+        <article class="stat-card">
+            <div class="stat-label">CARDS BROUGHT TO THE TABLE</div>
+            <strong>@stats.CardsLoaded.ToString("N0")</strong>
+            <p>Total physical cards loaded into decks.</p>
+        </article>
+    </section>
+
+    <section class="format-stats">
+        <div>
+            <div class="eyebrow">THE FORMAT SPLIT</div>
+            <h2>How we play</h2>
+            <p>Played games by format. Each game is counted once when the second player joins.</p>
+        </div>
+        <div class="format-list">
+            <div class="format-row"><span>Commander</span><strong>@stats.CommanderGamesPlayed.ToString("N0")</strong></div>
+            <div class="format-track"><div style="@($"width:{CommanderPercent}%")"></div></div>
+            <div class="format-row"><span>Regular</span><strong>@stats.RegularGamesPlayed.ToString("N0")</strong></div>
+            <div class="format-track"><div style="@($"width:{RegularPercent}%")"></div></div>
+        </div>
+    </section>
+
+    <p class="stats-note">These totals stay in a separate counter table when inactive games are removed. Totals from before this page launched include only games still stored at the time of the upgrade.</p>
+    <footer><a href="/">← Back to the tabletop</a></footer>
+</main>
+
+@code {
+    private PublicStats stats = new(0, 0, 0, 0, 0, 0);
+    private int CommanderPercent => stats.GamesPlayed == 0 ? 0 : (int)Math.Round(100d * stats.CommanderGamesPlayed / stats.GamesPlayed);
+    private int RegularPercent => stats.GamesPlayed == 0 ? 0 : (int)Math.Round(100d * stats.RegularGamesPlayed / stats.GamesPlayed);
+
+    protected override async Task OnInitializedAsync() => stats = await Games.GetPublicStatsAsync();
+}

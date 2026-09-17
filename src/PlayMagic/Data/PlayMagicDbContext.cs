@@ -10,6 +10,7 @@ public sealed class PlayMagicDbContext(DbContextOptions<PlayMagicDbContext> opti
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Player> Players => Set<Player>();
     public DbSet<GameCard> GameCards => Set<GameCard>();
+    public DbSet<PublicStatistics> PublicStatistics => Set<PublicStatistics>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -21,6 +22,18 @@ public sealed class PlayMagicDbContext(DbContextOptions<PlayMagicDbContext> opti
         modelBuilder.Entity<GameCard>().HasOne<Player>().WithMany().HasForeignKey(card => card.PlayerId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<GameCard>().HasIndex(card => new { card.PlayerId, card.Zone, card.SortOrder });
     }
+}
+
+/// <summary>Cumulative public totals that survive game cleanup.</summary>
+public sealed class PublicStatistics
+{
+    public int Id { get; set; } = 1;
+    public long GamesCreated { get; set; }
+    public long GamesPlayed { get; set; }
+    public long CommanderGamesPlayed { get; set; }
+    public long RegularGamesPlayed { get; set; }
+    public long PlayersJoined { get; set; }
+    public long CardsLoaded { get; set; }
 }
 
 /// <summary>An English Oracle card and the Scryfall image URLs for its faces.</summary>

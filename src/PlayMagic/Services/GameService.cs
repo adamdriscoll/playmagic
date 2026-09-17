@@ -20,6 +20,10 @@ public sealed record PlayerView(string Id, string Name, string DeckName, int Lif
 /// <summary>A game snapshot filtered for one anonymous seat.</summary>
 public sealed record GameView(string Id, string Format, string MyPlayerId, List<PlayerView> Players);
 
+/// <summary>Cumulative public totals, independent of retained game records.</summary>
+public sealed record PublicStats(long GamesCreated, long GamesPlayed, long CommanderGamesPlayed,
+    long RegularGamesPlayed, long PlayersJoined, long CardsLoaded);
+
 /// <summary>A user-facing game action error.</summary>
 public sealed class GameActionException(string message) : Exception(message);
 
@@ -89,11 +93,23 @@ public sealed class GameService(
             var id = new string(Enumerable.Range(0, 8)
                 .Select(_ => GameAlphabet[RandomNumberGenerator.GetInt32(GameAlphabet.Length)]).ToArray());
             if (await db.Games.AnyAsync(game => game.Id == id)) continue;
+            await using var transaction = await db.Database.BeginTransactionAsync();
             db.Games.Add(new Game { Id = id, Format = format });
             await db.SaveChangesAsync();
+            await IncrementStatisticsAsync(db, gamesCreated: 1);
+            await transaction.CommitAsync();
             return id;
         }
         throw new GameActionException("Could not make a game code. Please try again.");
+    }
+
+    public async Task<PublicStats> GetPublicStatsAsync()
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+        return await db.PublicStatistics.AsNoTracking()
+            .Select(stats => new PublicStats(stats.GamesCreated, stats.GamesPlayed,
+                stats.CommanderGamesPlayed, stats.RegularGamesPlayed, stats.PlayersJoined, stats.CardsLoaded))
+            .SingleOrDefaultAsync() ?? new PublicStats(0, 0, 0, 0, 0, 0);
     }
 
     public async Task<GameInfo?> GetInfoAsync(string gameId)
@@ -132,7 +148,8 @@ public sealed class GameService(
             await using var db = await contextFactory.CreateDbContextAsync();
             var game = await db.Games.FirstOrDefaultAsync(item => item.Id == gameId)
                 ?? throw new GameActionException("This game code does not exist.");
-            if (await db.Players.CountAsync(player => player.GameId == gameId) >= 4)
+            var existingPlayers = await db.Players.CountAsync(player => player.GameId == gameId);
+            if (existingPlayers >= 4)
                 throw new GameActionException("This game already has four players.");
 
             var catalogCards = await db.Cards.AsNoTracking().ToListAsync();
@@ -199,7 +216,14 @@ public sealed class GameService(
             }
             db.GameCards.AddRange(cards);
             game.LastActivityUtc = DateTime.UtcNow;
+            await using var transaction = await db.Database.BeginTransactionAsync();
             await db.SaveChangesAsync();
+            var started = existingPlayers == 1;
+            await IncrementStatisticsAsync(db, gamesPlayed: started ? 1 : 0,
+                commanderGamesPlayed: started && game.Format == "Commander" ? 1 : 0,
+                regularGamesPlayed: started && game.Format == "Regular" ? 1 : 0,
+                playersJoined: 1, cardsLoaded: cards.Count);
+            await transaction.CommitAsync();
             notifier.Publish(gameId);
             return token;
         }
@@ -347,6 +371,23 @@ public sealed class GameService(
             finally { gate.Release(); }
         }
         return removed;
+    }
+
+    private static async Task IncrementStatisticsAsync(PlayMagicDbContext db,
+        long gamesCreated = 0, long gamesPlayed = 0, long commanderGamesPlayed = 0,
+        long regularGamesPlayed = 0, long playersJoined = 0, long cardsLoaded = 0)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO ""PublicStatistics""
+                (""Id"", ""GamesCreated"", ""GamesPlayed"", ""CommanderGamesPlayed"", ""RegularGamesPlayed"", ""PlayersJoined"", ""CardsLoaded"")
+            VALUES (1, {gamesCreated}, {gamesPlayed}, {commanderGamesPlayed}, {regularGamesPlayed}, {playersJoined}, {cardsLoaded})
+            ON CONFLICT(""Id"") DO UPDATE SET
+                ""GamesCreated"" = ""GamesCreated"" + excluded.""GamesCreated"",
+                ""GamesPlayed"" = ""GamesPlayed"" + excluded.""GamesPlayed"",
+                ""CommanderGamesPlayed"" = ""CommanderGamesPlayed"" + excluded.""CommanderGamesPlayed"",
+                ""RegularGamesPlayed"" = ""RegularGamesPlayed"" + excluded.""RegularGamesPlayed"",
+                ""PlayersJoined"" = ""PlayersJoined"" + excluded.""PlayersJoined"",
+                ""CardsLoaded"" = ""CardsLoaded"" + excluded.""CardsLoaded""");
     }
 
     private static string AdjustCounter(string json, string name, int delta)
