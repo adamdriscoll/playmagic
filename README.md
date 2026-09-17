@@ -21,6 +21,10 @@ The default SQLite path is under the app's `Data` directory. Set `ConnectionStri
 
 Hands are private to their owning browser; only hand counts are shown to opponents. An anonymous seat token is stored in that browser's local storage, so clearing browser storage loses access to that seat. Game state remains in SQLite across server restarts. Live updates currently assume one app server instance.
 
+An hourly cleanup removes unjoined games after 24 hours and joined games after 30 days without activity, including their seats and cards. Viewing a game with a valid seat token counts as activity. Existing games get a fresh grace period when the activity tracking migration runs.
+
+Game creation is limited to five attempts per IP address per 10 minutes, and joining is limited to ten attempts per IP address per 10 minutes. Excess attempts receive HTTP 429 with a retry time. These in-memory limits reset on server restart and apply per app instance. If deployed behind a reverse proxy, configure trusted forwarded headers so the app sees each visitor's IP address.
+
 The tabletop does not enforce Magic rules, turn stages, commander zones, or card abilities. Sideboard and maybeboard cards are left out of text imports.
 
 Moxfield does not offer a supported public deck API. The URL importer uses its public deck endpoint, which may return HTTP 403; the text export path is the reliable fallback.

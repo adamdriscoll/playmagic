@@ -199,13 +199,19 @@
         error = "";
         try
         {
-            token = await Games.JoinAsync(Id, playerName, deckUrl, deckText, deckName);
+            var result = await JS.InvokeAsync<GameApiResponse>("playMagic.post", $"/api/games/{Uri.EscapeDataString(Id)}/join",
+                new { playerName, deckUrl, deckText, deckName });
+            if (result.Value is null)
+            {
+                error = result.Error ?? "Could not join this game. Please try again.";
+                showExport = result.ImportFailed;
+                return;
+            }
+            token = result.Value;
             await JS.InvokeVoidAsync("playMagic.setToken", Id, token);
             await Refresh();
         }
-        catch (DeckImportException exception) { error = exception.Message; showExport = true; }
-        catch (GameActionException exception) { error = exception.Message; }
-        catch (HttpRequestException) { error = "Could not reach Moxfield. Paste a text export to join."; showExport = true; }
+        catch (JSException) { error = "Could not join this game. Please try again."; }
         catch (Exception exception) { Logger.LogError(exception, "Could not join game {GameId}", Id); error = "Could not join this game. Please try again."; }
         finally { busy = false; }
     }
@@ -243,4 +249,5 @@
     }
 
     public void Dispose() => subscription?.Dispose();
+
 }

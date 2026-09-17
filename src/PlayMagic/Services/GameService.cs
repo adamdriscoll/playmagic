@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -27,20 +26,36 @@ public sealed class GameActionException(string message) : Exception(message);
 /// <summary>Notifies active Blazor circuits after a committed game change.</summary>
 public sealed class GameNotifier
 {
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, Action>> _subscribers = new();
+    private readonly Dictionary<string, Dictionary<Guid, Action>> _subscribers = new();
+    private readonly object _gate = new();
 
     public IDisposable Subscribe(string gameId, Action callback)
     {
         var key = Guid.NewGuid();
-        var listeners = _subscribers.GetOrAdd(gameId, _ => new());
-        listeners[key] = callback;
-        return new Subscription(() => listeners.TryRemove(key, out _));
+        lock (_gate)
+        {
+            if (!_subscribers.TryGetValue(gameId, out var listeners))
+                _subscribers[gameId] = listeners = new();
+            listeners[key] = callback;
+        }
+        return new Subscription(() =>
+        {
+            lock (_gate)
+            {
+                if (!_subscribers.TryGetValue(gameId, out var listeners)) return;
+                listeners.Remove(key);
+                if (listeners.Count == 0) _subscribers.Remove(gameId);
+            }
+        });
     }
 
     public void Publish(string gameId)
     {
-        if (_subscribers.TryGetValue(gameId, out var listeners))
-            foreach (var callback in listeners.Values) callback();
+        Action[] callbacks;
+        lock (_gate)
+            callbacks = _subscribers.TryGetValue(gameId, out var listeners)
+                ? listeners.Values.ToArray() : [];
+        foreach (var callback in callbacks) callback();
     }
 
     private sealed class Subscription(Action unsubscribe) : IDisposable
@@ -56,10 +71,16 @@ public sealed class GameService(
     DeckImportService deckImport,
     GameNotifier notifier)
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gameLocks = new();
+    private readonly SemaphoreSlim[] _gameLocks = Enumerable.Range(0, 256)
+        .Select(_ => new SemaphoreSlim(1, 1)).ToArray();
     private const string GameAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static readonly TimeSpan EmptyGameLifetime = TimeSpan.FromHours(24);
+    private static readonly TimeSpan InactiveGameLifetime = TimeSpan.FromDays(30);
 
-    public async Task<string> CreateAsync(string format)
+    private SemaphoreSlim GateFor(string gameId) =>
+        _gameLocks[(uint)StringComparer.Ordinal.GetHashCode(gameId) % (uint)_gameLocks.Length];
+
+    public async Task<string> CreateAsync(string? format)
     {
         if (format is not ("Commander" or "Regular")) throw new GameActionException("Choose Commander or Regular.");
         await using var db = await contextFactory.CreateDbContextAsync();
@@ -85,16 +106,26 @@ public sealed class GameService(
 
     public async Task<string> JoinAsync(string gameId, string playerName, string? deckUrl, string? deckText, string? deckName = null)
     {
+        if (gameId.Length != 8 || gameId.Any(character => !GameAlphabet.Contains(character)))
+            throw new GameActionException("This game code does not exist.");
         playerName = playerName.Trim();
         if (playerName.Length is < 1 or > 24) throw new GameActionException("Choose a name of 1 to 24 characters.");
+        if (deckUrl?.Length > 2048) throw new GameActionException("Deck URLs must be 2048 characters or fewer.");
         deckName = deckName?.Trim();
         if (deckName?.Length > 80) throw new GameActionException("Deck names must be 80 characters or fewer.");
+        await using (var preflightDb = await contextFactory.CreateDbContextAsync())
+        {
+            if (!await preflightDb.Games.AnyAsync(game => game.Id == gameId))
+                throw new GameActionException("This game code does not exist.");
+            if (await preflightDb.Players.CountAsync(player => player.GameId == gameId) >= 4)
+                throw new GameActionException("This game already has four players.");
+        }
         var imported = await deckImport.ImportAsync(deckUrl, deckText);
         if (imported.Cards.Sum(card => card.Quantity) > 250) throw new GameActionException("A deck can contain at most 250 cards.");
         var status = await catalog.GetStatusAsync();
         if (status.Count == 0) throw new GameActionException("The card catalog is still downloading. Please try again shortly.");
 
-        var gate = _gameLocks.GetOrAdd(gameId, _ => new SemaphoreSlim(1, 1));
+        var gate = GateFor(gameId);
         await gate.WaitAsync();
         try
         {
@@ -167,6 +198,7 @@ public sealed class GameService(
                 if (index < Math.Min(7, cards.Count)) cards[index].Zone = CardZones.Hand;
             }
             db.GameCards.AddRange(cards);
+            game.LastActivityUtc = DateTime.UtcNow;
             await db.SaveChangesAsync();
             notifier.Publish(gameId);
             return token;
@@ -176,6 +208,14 @@ public sealed class GameService(
 
     public async Task<GameView?> GetViewAsync(string gameId, string token)
     {
+        var gate = GateFor(gameId);
+        await gate.WaitAsync();
+        try { return await GetViewUnderLockAsync(gameId, token); }
+        finally { gate.Release(); }
+    }
+
+    private async Task<GameView?> GetViewUnderLockAsync(string gameId, string token)
+    {
         await using var db = await contextFactory.CreateDbContextAsync();
         var game = await db.Games.AsNoTracking().FirstOrDefaultAsync(item => item.Id == gameId);
         if (game is null) return null;
@@ -183,6 +223,10 @@ public sealed class GameService(
             .ToListAsync()).OrderBy(player => player.JoinedUtc).ToList();
         var mine = players.FirstOrDefault(player => player.TokenHash == HashToken(token));
         if (mine is null) return null;
+        var now = DateTime.UtcNow;
+        if (game.LastActivityUtc < now.AddMinutes(-15))
+            await db.Games.Where(item => item.Id == gameId && item.LastActivityUtc < now.AddMinutes(-15))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.LastActivityUtc, now));
         var playerIds = players.Select(player => player.Id).ToList();
         var cards = await db.GameCards.AsNoTracking().Where(card => playerIds.Contains(card.PlayerId)).ToListAsync();
         var views = players.Select(player =>
@@ -261,7 +305,7 @@ public sealed class GameService(
 
     private async Task MutateAsync(string gameId, string token, Func<PlayMagicDbContext, Player, Task> change)
     {
-        var gate = _gameLocks.GetOrAdd(gameId, _ => new SemaphoreSlim(1, 1));
+        var gate = GateFor(gameId);
         await gate.WaitAsync();
         try
         {
@@ -270,10 +314,39 @@ public sealed class GameService(
             var player = await db.Players.FirstOrDefaultAsync(item => item.GameId == gameId && item.TokenHash == hash)
                 ?? throw new GameActionException("Your game seat could not be found. Rejoin from this browser.");
             await change(db, player);
+            var game = await db.Games.FirstAsync(item => item.Id == gameId);
+            game.LastActivityUtc = DateTime.UtcNow;
             await db.SaveChangesAsync();
             notifier.Publish(gameId);
         }
         finally { gate.Release(); }
+    }
+
+    public async Task<int> CleanupExpiredAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var emptyCutoff = now - EmptyGameLifetime;
+        var inactiveCutoff = now - InactiveGameLifetime;
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var expiredIds = await db.Games.AsNoTracking()
+            .Where(game => game.LastActivityUtc < inactiveCutoff ||
+                game.LastActivityUtc < emptyCutoff && !db.Players.Any(player => player.GameId == game.Id))
+            .Select(game => game.Id).ToListAsync(cancellationToken);
+        var removed = 0;
+        foreach (var id in expiredIds)
+        {
+            var gate = GateFor(id);
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                removed += await db.Games.Where(game => game.Id == id &&
+                    (game.LastActivityUtc < inactiveCutoff ||
+                     game.LastActivityUtc < emptyCutoff && !db.Players.Any(player => player.GameId == game.Id)))
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
+            finally { gate.Release(); }
+        }
+        return removed;
     }
 
     private static string AdjustCounter(string json, string name, int delta)

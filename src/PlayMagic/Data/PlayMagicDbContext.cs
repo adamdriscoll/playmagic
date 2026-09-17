@@ -15,6 +15,7 @@ public sealed class PlayMagicDbContext(DbContextOptions<PlayMagicDbContext> opti
     {
         modelBuilder.Entity<CatalogCard>().HasIndex(card => card.Name);
         modelBuilder.Entity<CatalogCard>().HasIndex(card => card.OracleId);
+        modelBuilder.Entity<Game>().HasIndex(game => game.LastActivityUtc);
         modelBuilder.Entity<Player>().HasIndex(player => new { player.GameId, player.TokenHash }).IsUnique();
         modelBuilder.Entity<Player>().HasOne<Game>().WithMany().HasForeignKey(player => player.GameId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<GameCard>().HasOne<Player>().WithMany().HasForeignKey(card => card.PlayerId).OnDelete(DeleteBehavior.Cascade);
@@ -49,6 +50,7 @@ public sealed class Game
     public string Id { get; set; } = "";
     public string Format { get; set; } = "Regular";
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTime LastActivityUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>An anonymous seat in one game.</summary>

@@ -3,7 +3,7 @@
 @using PlayMagic.Data
 @using PlayMagic.Services
 @inject CardCatalogService Catalog
-@inject GameService Games
+@inject IJSRuntime JS
 @inject NavigationManager Navigation
 
 <PageTitle>PlayMagic · tabletop Magic with friends</PageTitle>
@@ -100,8 +100,13 @@
     {
         busy = true;
         error = "";
-        try { Navigation.NavigateTo($"/game/{await Games.CreateAsync(format)}"); }
-        catch (GameActionException exception) { error = exception.Message; }
+        try
+        {
+            var result = await JS.InvokeAsync<GameApiResponse>("playMagic.post", "/api/games", new { format });
+            if (result.Value is not null) Navigation.NavigateTo($"/game/{result.Value}");
+            else error = result.Error ?? "Could not create a game. Please try again.";
+        }
+        catch (JSException) { error = "Could not create a game. Please try again."; }
         finally { busy = false; }
     }
 
@@ -115,4 +120,5 @@
     private async Task Search() => searchResults = await Catalog.SearchAsync(searchTerm);
     private async Task SearchOnEnter(KeyboardEventArgs args) { if (args.Key == "Enter") await Search(); }
     private void ShowCard(CatalogCard card) { randomCard = card; searchResults = null; }
+
 }

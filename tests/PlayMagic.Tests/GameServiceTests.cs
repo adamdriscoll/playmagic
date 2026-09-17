@@ -68,6 +68,46 @@ public sealed class GameServiceTests
     }
 
     [TestMethod]
+    public async Task CleanupRemovesExpiredGamesAndCascadesToSeatsAndCards()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var registrations = new ServiceCollection();
+        registrations.AddLogging();
+        registrations.AddHttpClient();
+        registrations.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
+        registrations.AddSingleton<CardCatalogService>();
+        registrations.AddSingleton<DeckImportService>();
+        registrations.AddSingleton<GameNotifier>();
+        registrations.AddSingleton<GameService>();
+        using var provider = registrations.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.Games.AddRange(
+                new Game { Id = "OLDMPTY1", LastActivityUtc = DateTime.UtcNow.AddHours(-25) },
+                new Game { Id = "NEWEMPTY", LastActivityUtc = DateTime.UtcNow.AddHours(-23) },
+                new Game { Id = "OLDPLAY1", LastActivityUtc = DateTime.UtcNow.AddDays(-31) },
+                new Game { Id = "NEWPLAY1", LastActivityUtc = DateTime.UtcNow.AddDays(-29) });
+            db.Players.AddRange(
+                new Player { Id = "old-player", GameId = "OLDPLAY1", Name = "Old", TokenHash = "old" },
+                new Player { Id = "new-player", GameId = "NEWPLAY1", Name = "New", TokenHash = "new" });
+            db.GameCards.Add(new GameCard { Id = "old-card", PlayerId = "old-player", Name = "Island" });
+            await db.SaveChangesAsync();
+        }
+
+        var removed = await provider.GetRequiredService<GameService>().CleanupExpiredAsync();
+
+        Assert.AreEqual(2, removed);
+        await using var verify = await factory.CreateDbContextAsync();
+        CollectionAssert.AreEquivalent(new[] { "NEWEMPTY", "NEWPLAY1" },
+            await verify.Games.Select(game => game.Id).ToArrayAsync());
+        Assert.AreEqual(1, await verify.Players.CountAsync());
+        Assert.AreEqual(0, await verify.GameCards.CountAsync());
+    }
+
+    [TestMethod]
     public void TextImportParsesFullMoxfieldExport()
     {
         var text = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "MoxfieldExport.txt"));
