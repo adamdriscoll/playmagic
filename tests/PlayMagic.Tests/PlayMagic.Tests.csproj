@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\PlayMagic\PlayMagic.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Fixtures\MoxfieldExport.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

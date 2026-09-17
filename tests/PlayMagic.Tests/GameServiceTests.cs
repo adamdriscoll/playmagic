@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PlayMagic.Data;
 using PlayMagic.Services;
+using System.Net;
+using System.Text;
 
 namespace PlayMagic.Tests;
 
@@ -63,5 +65,96 @@ public sealed class GameServiceTests
         Assert.HasCount(2, deck.Cards);
         Assert.AreEqual(3, deck.Cards.Single(card => card.Name == "Island").Quantity);
         Assert.AreEqual(1, deck.Cards.Single(card => card.Name == "Sol Ring").Quantity);
+    }
+
+    [TestMethod]
+    public void TextImportParsesFullMoxfieldExport()
+    {
+        var text = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "MoxfieldExport.txt"));
+        var deck = DeckImportService.ParseText(text);
+
+        Assert.HasCount(100, deck.Cards);
+        Assert.AreEqual(100, deck.Cards.Sum(card => card.Quantity));
+        Assert.IsFalse(deck.Cards.Any(card => card.Name.Contains(" *F*") || card.Name.Contains(" *E*")));
+        Assert.IsTrue(deck.Cards.All(card => card.SetCode is not null && card.CollectorNumber is not null));
+        Assert.AreEqual("Breya, Etherium Shaper", deck.Cards[0].Name);
+        Assert.AreEqual("2XM", deck.Cards[0].SetCode);
+        Assert.AreEqual("192", deck.Cards[0].CollectorNumber);
+        Assert.AreEqual("2026-1", deck.Cards.Single(card => card.Name == "Command Tower").CollectorNumber);
+        Assert.AreEqual("Tony Stark // The Invincible Iron Man",
+            deck.Cards.Single(card => card.Name.StartsWith("Tony Stark", StringComparison.Ordinal)).Name);
+        Assert.AreEqual("2217", deck.Cards.Single(card => card.Name == "Kings Bay Clock Tower").CollectorNumber);
+    }
+
+    [TestMethod]
+    public async Task AlternatePrintedNamesResolveToOracleCards()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var handler = new PrintingHandler();
+        var registrations = new ServiceCollection();
+        registrations.AddLogging();
+        registrations.AddHttpClient("Scryfall", client => client.BaseAddress = new Uri("https://api.scryfall.com/"))
+            .ConfigurePrimaryHttpMessageHandler(() => handler);
+        registrations.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
+        registrations.AddSingleton<CardCatalogService>();
+        registrations.AddSingleton<DeckImportService>();
+        registrations.AddSingleton<GameNotifier>();
+        registrations.AddSingleton<GameService>();
+        using var provider = registrations.BuildServiceProvider();
+
+        await using (var db = await provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>().CreateDbContextAsync())
+        {
+            await db.Database.EnsureCreatedAsync();
+            foreach (var name in new[] { "Midnight Clock", "Academy Ruins", "Fellwar Stone", "Thran Dynamo" })
+                db.Cards.Add(new CatalogCard { Id = name, OracleId = name, Name = name });
+            db.CatalogSyncs.Add(new CatalogSync { Id = 1, CardCount = 4, LastUpdatedUtc = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var games = provider.GetRequiredService<GameService>();
+        var gameId = await games.CreateAsync("Commander");
+        var token = await games.JoinAsync(gameId, "Player", null,
+            "1 Kings Bay Clock Tower (SLD) 2217 *F*\n" +
+            "1 Kitezh, Sunken City (SLD) 1506 *F*\n" +
+            "1 Shu Jing Meteorite (SLD) 7062 *F*\n" +
+            "1 The Hexcore (SLD) 483 *F*");
+        var view = await games.GetViewAsync(gameId, token);
+
+        Assert.IsNotNull(view);
+        Assert.HasCount(4, view.Players[0].Cards);
+        Assert.IsTrue(view.Players[0].Cards.All(card =>
+            card.Name is "Midnight Clock" or "Academy Ruins" or "Fellwar Stone" or "Thran Dynamo"));
+        Assert.AreEqual(4, handler.RequestCount);
+    }
+
+    private sealed class PrintingHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            var card = request.RequestUri?.AbsolutePath switch
+            {
+                "/cards/sld/2217" => ("Midnight Clock", "Kings Bay Clock Tower"),
+                "/cards/sld/1506" => ("Academy Ruins", "Kitezh, Sunken City"),
+                "/cards/sld/7062" => ("Fellwar Stone", "Shu Jing Meteorite"),
+                "/cards/sld/483" => ("Thran Dynamo", "The Hexcore"),
+                _ => default
+            };
+            if (card.Item1 is null)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            var json = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                name = card.Item1,
+                flavor_name = card.Item2,
+                oracle_id = card.Item1
+            });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        }
     }
 }

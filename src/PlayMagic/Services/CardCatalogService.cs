@@ -66,6 +66,23 @@ public sealed class CardCatalogService(
             card => EF.Functions.Like(card.Name, $"{EscapeLike(name)} // %", "\\"), cancellationToken);
     }
 
+    /// <summary>Resolves alternate printed names, such as Secret Lair flavor names, to an Oracle ID.</summary>
+    public async Task<string?> GetOracleIdForPrintingAsync(
+        string setCode, string collectorNumber, string expectedName, CancellationToken cancellationToken = default)
+    {
+        var client = httpClientFactory.CreateClient("Scryfall");
+        var path = $"cards/{Uri.EscapeDataString(setCode.ToLowerInvariant())}/{Uri.EscapeDataString(collectorNumber)}";
+        using var response = await client.GetAsync(path, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        var card = json.RootElement;
+        if (!new[] { GetString(card, "name"), GetString(card, "flavor_name"), GetString(card, "printed_name") }
+            .Any(name => string.Equals(name, expectedName, StringComparison.OrdinalIgnoreCase))) return null;
+        return GetString(card, "oracle_id");
+    }
+
     public async Task RefreshIfDueAsync(CancellationToken cancellationToken = default)
     {
         await _refreshLock.WaitAsync(cancellationToken);

@@ -104,12 +104,37 @@ public sealed class GameService(
             if (await db.Players.CountAsync(player => player.GameId == gameId) >= 4)
                 throw new GameActionException("This game already has four players.");
 
-            var names = imported.Cards.Select(card => card.Name).ToList();
             var catalogCards = await db.Cards.AsNoTracking().ToListAsync();
             var byName = catalogCards.GroupBy(card => card.Name, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-            var missing = names.Where(name => !byName.ContainsKey(name)
-                && !catalogCards.Any(card => card.Name.StartsWith(name + " // ", StringComparison.OrdinalIgnoreCase))).Take(5).ToList();
+            var byOracleId = catalogCards.GroupBy(card => card.OracleId)
+                .ToDictionary(group => group.Key, group => group.First());
+            var resolved = new Dictionary<string, CatalogCard>(StringComparer.OrdinalIgnoreCase);
+            var missing = new List<string>();
+            foreach (var entry in imported.Cards)
+            {
+                if (!byName.TryGetValue(entry.Name, out var source))
+                    source = catalogCards.FirstOrDefault(card =>
+                        card.Name.StartsWith(entry.Name + " // ", StringComparison.OrdinalIgnoreCase));
+                if (source is null && entry.SetCode is not null && entry.CollectorNumber is not null)
+                {
+                    try
+                    {
+                        var oracleId = await catalog.GetOracleIdForPrintingAsync(
+                            entry.SetCode, entry.CollectorNumber, entry.Name);
+                        if (oracleId is not null) byOracleId.TryGetValue(oracleId, out source);
+                    }
+                    catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+                    {
+                        throw new GameActionException("Could not verify alternate card names with Scryfall. Please try again.");
+                    }
+                }
+                if (source is null)
+                {
+                    if (missing.Count < 5) missing.Add(entry.Name);
+                }
+                else resolved[entry.Name] = source;
+            }
             if (missing.Count > 0) throw new GameActionException($"Cards not found in the Oracle catalog: {string.Join(", ", missing)}.");
 
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -126,8 +151,7 @@ public sealed class GameService(
             var cards = new List<GameCard>();
             foreach (var entry in imported.Cards)
             {
-                if (!byName.TryGetValue(entry.Name, out var source))
-                    source = catalogCards.First(card => card.Name.StartsWith(entry.Name + " // ", StringComparison.OrdinalIgnoreCase));
+                var source = resolved[entry.Name];
                 for (var index = 0; index < entry.Quantity; index++)
                     cards.Add(new GameCard
                     {

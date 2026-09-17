@@ -1,0 +1,100 @@
+1 Breya, Etherium Shaper (2XM) 192 *F*
+1 Alibou, Ancient Witness (C21) 7 *F*
+1 Ancient Den (BRC) 172
+1 Arcane Signet (P30M) 1F *F*
+1 Blood Crypt (UNF) 279 *F*
+1 Bolas's Citadel (PLG21) 3 *F*
+1 Caves of Koilos (C21) 283
+1 Chromatic Lantern (ONC) 127
+1 City of Brass (2X2) 570 *E*
+1 Coat of Arms (H09) 29 *F*
+1 Command Tower (PMEI) 2026-1 *F*
+1 Conjurer's Closet (2XM) 243 *F*
+1 Cyclonic Rift (SOA) 14 *F*
+1 Dance of the Manse (SLD) 2104 *F*
+1 Demonic Tutor (STA) 27 *F*
+1 Displacer Kitten (CLB) 560 *F*
+1 Eiganjo, Seat of the Empire (NEO) 268 *F*
+1 Elesh Norn, Mother of Machines (ONE) 415 *F*
+1 Enlightened Tutor (DMR) 263 *F*
+1 Esper Sentinel (MH2) 328 *F*
+1 Etherium Sculptor (MMA) 44 *F*
+1 Ethersworn Canonist (SLD) 2102 *F*
+1 Exotic Orchard (VOC) 173
+1 Fateful Discovery (HOB) 256 *F*
+1 Flare of Fortitude (MH3) 26
+1 Gandalf the White (LTR) 442 *F*
+1 Gilded Lotus (CMM) 605 *E*
+1 Glimmervoid (MMA) 223
+1 Goblin Engineer (MH1) 128 *F*
+1 Godless Shrine (UNF) 282 *F*
+1 Hallowed Fountain (RVR) 295 *F*
+1 Haunted Ridge (MID) 282 *F*
+1 Heliod, Sun-Crowned (PTHB) 18p
+1 Ingenious Artillerist (CLB) 182
+1 Island (DMR) 405 *F*
+1 Jhoira, Weatherlight Captain (SLD) 1276 *F*
+1 Kappa Cannoneer (NEC) 14
+1 Kings Bay Clock Tower (SLD) 2217 *F*
+1 Kitezh, Sunken City (SLD) 1506 *F*
+1 Liberator, Urza's Battlethopter (BRO) 364 *F*
+1 Luxury Suite (PCLB) 355s *F*
+1 Marionette Master (KLD) 90 *F*
+1 Master Transmuter (BRC) 87
+1 Mistvault Bridge (MH2) 249
+1 Mondrak, Glory Dominus (ONE) 23
+1 Morphic Pool (CLB) 357
+1 Mystic Forge (M20) 233 *F*
+1 Mystic Remora (ICE) 87
+1 Ornithopter of Paradise (MH2) 232
+1 Padeem, Consul of Innovation (KLD) 59
+1 Panharmonicon (SLD) 605 *F*
+1 Phyrexian Metamorph (SLD) 1110 *F*
+1 Plaza of Heroes (EOS) 33 *F*
+1 Razortide Bridge (MH2) 252
+1 Reckless Fireweaver (KLD) 126
+1 Reflecting Pool (CLB) 604 *F*
+1 Relic of Legends (DMU) 236
+1 Rhystic Study (J22) 114
+1 Roaming Throne (LCI) 344
+1 Sacred Foundry (GTC) 245
+1 Seat of the Synod (J22) 820
+1 Sensei's Divining Top (2X2) 314 *F*
+1 Shivan Reef (C21) 316
+1 Shu Jing Meteorite (SLD) 7062 *F*
+1 Shuri, Wakandan Inventor (MSH) 75 *F*
+1 Simulacrum Synthesizer (BIG) 6
+1 Skrelv, Defector Mite (ONE) 427 *F*
+1 Skullclamp (SLD) 1663 *F*
+1 Smothering Tithe (PRNA) 22p
+1 Sol Ring (SLD) 1734 *F*
+1 Soulherder (SLD) 2174 *F*
+1 Spectator Seating (CMR) 711 *F*
+1 Steam Vents (ECL) 348 *F*
+1 Sundown Pass (VOW) 285 *F*
+1 Swords to Plowshares (SLD) 364 *E*
+1 Talisman of Creativity (H1R) 34 *F*
+1 Talisman of Dominance (SLD) 1053 *E*
+1 Talisman of Hierarchy (SLD) 1057 *E*
+1 Talisman of Indulgence (SLD) 1054 *E*
+1 Teferi's Protection (2X2) 343 *F*
+1 Tezzeret the Seeker (SLD) 1111 *F*
+1 Tezzeret, Master of the Bridge (WAR) 275 *F*
+1 The Hexcore (SLD) 483 *F*
+1 The Mycosynth Gardens (ONE) 402 *F*
+1 The One Ring (LTR) 791 *F*
+1 Tony Stark / The Invincible Iron Man (MSH) 392 *F*
+1 Training Center (CMR) 358 *F*
+1 Treasure Nabber (CMM) 552 *E*
+1 Ultron, Artificial Malevolence (MSH) 401 *F*
+1 Underground River (PBRO) 267s *F*
+1 Unwinding Clock (NPH) 164
+1 Urza, Chief Artificer (BRC) 49 *F*
+1 Urza, Lord High Artificer (DMR) 423
+1 Uthros, Titanic Godcore (EOE) 260 *F*
+1 Vault of Champions (CMR) 715 *F*
+1 Vault of Whispers (MRD) 286
+1 Walking Ballista (SLD) 1265 *F*
+1 Watery Grave (UNF) 278 *F*
+1 Weftstalker Ardent (EOE) 169 *F*
+1 Xander's Lounge (PSNC) 260p
