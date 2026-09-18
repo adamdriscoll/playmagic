@@ -37,6 +37,7 @@ jobs:
           PROD_HOST: ${{ vars.PROD_HOST }}
           PROD_URL: ${{ vars.PROD_URL }}
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_SSH_PASSPHRASE: ${{ secrets.PROD_SSH_PASSPHRASE }}
           PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
@@ -54,6 +55,21 @@ jobs:
           printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          if [[ -n "$PROD_SSH_PASSPHRASE" ]]; then
+            eval "$(ssh-agent -s)" >/dev/null
+            printf 'SSH_AUTH_SOCK=%s\n' "$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+            cat > ~/.ssh/askpass <<'EOF'
+          #!/usr/bin/env bash
+          printf '%s\n' "$PROD_SSH_PASSPHRASE"
+          EOF
+            chmod 700 ~/.ssh/askpass
+            trap 'rm -f ~/.ssh/askpass' EXIT
+            if ! DISPLAY=:0 SSH_ASKPASS_REQUIRE=force SSH_ASKPASS="$HOME/.ssh/askpass" \
+              ssh-add ~/.ssh/id_ed25519 </dev/null; then
+              echo "Could not unlock PROD_SSH_KEY; check PROD_SSH_PASSPHRASE" >&2
+              exit 1
+            fi
+          fi
       - name: Copy and activate release
         shell: bash
         env:

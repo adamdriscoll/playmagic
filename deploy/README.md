@@ -5,7 +5,7 @@
 ## One-time setup
 
 1. Create an Ubuntu 24.04 x64 Droplet with SSH key authentication. Enable DigitalOcean backups and monitoring. Start with at least 2 GB RAM and watch memory and disk use during the initial Scryfall catalog import. Configure a DigitalOcean cloud firewall with inbound TCP 22 from the Internet for the GitHub-hosted runner and your administration access; leave inbound 80/443 closed. Standard GitHub-hosted runners do not have a fixed individual IP, so restricting SSH only to your home IP will block the workflow. Disable SSH password authentication and root login after confirming your non-root sudo user works.
-2. Generate a **separate** Ed25519 deploy key on your computer and leave its passphrase empty so GitHub Actions can use it unattended. Copy its public key and the `deploy` directory to your existing sudo user on the Droplet. For example, from PowerShell at the repository root (replace the uppercase placeholders):
+2. Generate a **separate** Ed25519 deploy key on your computer. A passphrase is supported when you add it as `PROD_SSH_PASSPHRASE` in GitHub; leave the passphrase empty only if you prefer an unencrypted deploy key. Copy its public key and the `deploy` directory to your existing sudo user on the Droplet. For example, from PowerShell at the repository root (replace the uppercase placeholders):
 
    ```powershell
    ssh-keygen -t ed25519 -f "$HOME\.ssh\playmagic_prod" -C playmagic-deploy
@@ -23,6 +23,7 @@
    | Variable | `PROD_HOST` | Droplet public IPv4 address or SSH hostname (not the proxied app hostname) |
    | Variable | `PROD_URL` | Public HTTPS URL, such as `https://playmagic.example.com` |
    | Secret | `PROD_SSH_KEY` | Entire private key from `playmagic_prod`, including BEGIN/END lines |
+   | Secret (optional) | `PROD_SSH_PASSPHRASE` | Passphrase for `PROD_SSH_KEY`, if the private key is encrypted |
    | Secret | `PROD_SSH_KNOWN_HOSTS` | Pinned OpenSSH host-key line for `PROD_HOST`, for example `DROPLET_IP ssh-ed25519 AAAA...` |
 
    Obtain the host-key line with `ssh-keyscan -t ed25519 DROPLET_IP`, then verify its fingerprint against the DigitalOcean console's `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` output before saving it. Do not use an unverified `ssh-keyscan` result as the trust anchor. The SSH private key is configured only after build and tests pass.
@@ -35,6 +36,7 @@
 - Durable SQLite data: `/var/lib/playmagic/playmagic.db`. The release directory is disposable. Each deployment after the first makes an online SQLite backup in `/opt/playmagic/backups` before switching the binary. Monitor disk space and remove old releases and backups after confirming newer ones are good. Keep off-Droplet backups enabled as well.
 - If the new process fails its local health check, the script switches back to the previous binary and reports failure. EF migrations run at startup and may change the database; a binary rollback cannot undo a migration. Restore the pre-deploy SQLite backup if the previous binary cannot run against the new schema.
 - The app expects one instance. Its in-process notifications and rate limits are not designed for multiple app servers. Cloudflare's `CF-Connecting-IP` and `X-Forwarded-Proto` are trusted only from the loopback tunnel process, so per-visitor rate limits and HTTPS behavior work through the tunnel.
+- If deployment says `Permission denied (publickey)`, confirm `PROD_SSH_KEY` contains the **private** key, set `PROD_SSH_PASSPHRASE` if it is encrypted, and test `ssh -i "$HOME\.ssh\playmagic_prod" playmagic-deploy@DROPLET_IP` from your computer. If that login fails too, compare the matching public key with `/home/playmagic-deploy/.ssh/authorized_keys` on the Droplet.
 
 ## References
 
