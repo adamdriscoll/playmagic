@@ -41,13 +41,21 @@
                 <input id="player-name" maxlength="24" placeholder="What should we call you?" @bind="playerName" @bind:event="oninput" />
                 <label for="deck-name">Deck name <small>(optional)</small></label>
                 <input id="deck-name" maxlength="80" placeholder="What deck are you playing?" @bind="deckName" @bind:event="oninput" />
-                <label for="deck-url">Moxfield deck URL</label>
-                <input id="deck-url" type="url" placeholder="https://www.moxfield.com/decks/…" @bind="deckUrl" @bind:event="oninput" />
-                <details class="import-fallback" open="@showExport">
-                    <summary>Or paste a Moxfield text export</summary>
-                    <p>Moxfield sometimes blocks automatic deck imports. In Moxfield, open Export and copy the plain text list.</p>
-                    <textarea aria-label="Moxfield text export" rows="7" placeholder="1 Sol Ring&#10;1 Command Tower&#10;…" @bind="deckText" @bind:event="oninput"></textarea>
-                </details>
+                @if (savedDecks.Count > 0)
+                {
+                    <label for="saved-deck">Use a saved deck</label>
+                    <div class="saved-deck-row">
+                        <select id="saved-deck" value="@selectedSavedDeck" @onchange="SelectSavedDeck">
+                            <option value="">Choose a deck…</option>
+                            @foreach (var deck in savedDecks) { <option value="@deck.Name">@deck.Name</option> }
+                        </select>
+                        <button class="outline-button" type="button" disabled="@(selectedSavedDeck.Length == 0)" @onclick="RemoveSavedDeck">Remove</button>
+                    </div>
+                }
+                <label for="deck-text">Paste your deck list</label>
+                <textarea id="deck-text" rows="9" placeholder="1 Sol Ring (one card per line)" @bind="deckText" @bind:event="oninput"></textarea>
+                <p class="small-note">Copy a plain text list from <a href="https://www.moxfield.com" target="_blank" rel="noopener noreferrer">Moxfield</a>, <a href="https://archidekt.com" target="_blank" rel="noopener noreferrer">Archidekt</a>, <a href="https://www.mtggoldfish.com" target="_blank" rel="noopener noreferrer">MTGGoldfish</a>, or another deck builder. Sideboards and maybeboards are skipped.</p>
+                <label class="save-deck-choice"><input type="checkbox" @bind="saveDeck" /> Save this deck in this browser for next time</label>
                 @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
                 <button class="primary-button" disabled="@busy" @onclick="Join">@(busy ? "Importing deck…" : "Join game →")</button>
                 <p class="small-note">Your seat stays in this browser. Your hand is visible only to you.</p>
@@ -166,12 +174,13 @@
     private string? token;
     private string playerName = "";
     private string deckName = "";
-    private string deckUrl = "";
     private string deckText = "";
+    private List<SavedDeck> savedDecks = [];
+    private string selectedSavedDeck = "";
+    private bool saveDeck;
     private string playerCounterName = "Poison";
     private string cardCounterName = "+1/+1";
     private string error = "";
-    private bool showExport;
     private bool busy;
     private bool loading = true;
     private PlayerView? MyPlayer => view?.Players.FirstOrDefault(player => player.Id == view.MyPlayerId);
@@ -187,6 +196,7 @@
     {
         if (!firstRender) return;
         token = await JS.InvokeAsync<string?>("playMagic.getToken", Id);
+        savedDecks = await JS.InvokeAsync<List<SavedDeck>>("playMagic.getSavedDecks");
         if (token is not null) view = await Games.GetViewAsync(Id, token);
         subscription = Notifier.Subscribe(Id, () => _ = InvokeAsync(async () => { await Refresh(); StateHasChanged(); }));
         loading = false;
@@ -200,21 +210,39 @@
         try
         {
             var result = await JS.InvokeAsync<GameApiResponse>("playMagic.post", $"/api/games/{Uri.EscapeDataString(Id)}/join",
-                new { playerName, deckUrl, deckText, deckName });
+                new { playerName, deckText, deckName });
             if (result.Value is null)
             {
                 error = result.Error ?? "Could not join this game. Please try again.";
-                showExport = result.ImportFailed;
                 return;
             }
             token = result.Value;
             await JS.InvokeVoidAsync("playMagic.setToken", Id, token);
+            if (saveDeck)
+                savedDecks = await JS.InvokeAsync<List<SavedDeck>>("playMagic.saveDeck", deckName, deckText);
             await Refresh();
         }
         catch (JSException) { error = "Could not join this game. Please try again."; }
         catch (Exception exception) { Logger.LogError(exception, "Could not join game {GameId}", Id); error = "Could not join this game. Please try again."; }
         finally { busy = false; }
     }
+
+    private void SelectSavedDeck(ChangeEventArgs args)
+    {
+        selectedSavedDeck = args.Value?.ToString() ?? "";
+        var saved = savedDecks.FirstOrDefault(deck => deck.Name == selectedSavedDeck);
+        if (saved is null) return;
+        deckName = saved.Name;
+        deckText = saved.Text;
+    }
+
+    private async Task RemoveSavedDeck()
+    {
+        savedDecks = await JS.InvokeAsync<List<SavedDeck>>("playMagic.removeSavedDeck", selectedSavedDeck);
+        selectedSavedDeck = "";
+    }
+
+    private sealed record SavedDeck(string Name, string Text);
 
     private async Task Refresh()
     {

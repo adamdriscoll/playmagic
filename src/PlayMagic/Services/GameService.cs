@@ -72,7 +72,6 @@ public sealed class GameNotifier
 public sealed class GameService(
     IDbContextFactory<PlayMagicDbContext> contextFactory,
     CardCatalogService catalog,
-    DeckImportService deckImport,
     GameNotifier notifier)
 {
     private readonly SemaphoreSlim[] _gameLocks = Enumerable.Range(0, 256)
@@ -120,13 +119,12 @@ public sealed class GameService(
         return new GameInfo(game.Id, game.Format, await db.Players.CountAsync(player => player.GameId == gameId));
     }
 
-    public async Task<string> JoinAsync(string gameId, string playerName, string? deckUrl, string? deckText, string? deckName = null)
+    public async Task<string> JoinAsync(string gameId, string playerName, string? deckText, string? deckName = null)
     {
         if (gameId.Length != 8 || gameId.Any(character => !GameAlphabet.Contains(character)))
             throw new GameActionException("This game code does not exist.");
         playerName = playerName.Trim();
         if (playerName.Length is < 1 or > 24) throw new GameActionException("Choose a name of 1 to 24 characters.");
-        if (deckUrl?.Length > 2048) throw new GameActionException("Deck URLs must be 2048 characters or fewer.");
         deckName = deckName?.Trim();
         if (deckName?.Length > 80) throw new GameActionException("Deck names must be 80 characters or fewer.");
         await using (var preflightDb = await contextFactory.CreateDbContextAsync())
@@ -136,7 +134,7 @@ public sealed class GameService(
             if (await preflightDb.Players.CountAsync(player => player.GameId == gameId) >= 4)
                 throw new GameActionException("This game already has four players.");
         }
-        var imported = await deckImport.ImportAsync(deckUrl, deckText);
+        var imported = DeckImportService.ParseText(deckText);
         if (imported.Cards.Sum(card => card.Quantity) > 250) throw new GameActionException("A deck can contain at most 250 cards.");
         var status = await catalog.GetStatusAsync();
         if (status.Count == 0) throw new GameActionException("The card catalog is still downloading. Please try again shortly.");
@@ -192,7 +190,6 @@ public sealed class GameService(
                 Name = playerName,
                 TokenHash = HashToken(token),
                 DeckName = string.IsNullOrWhiteSpace(deckName) ? imported.Name : deckName,
-                DeckUrl = imported.SourceUrl,
                 Life = game.Format == "Commander" ? 40 : 20
             };
             db.Players.Add(player);

@@ -1,10 +1,10 @@
 # Play Magic
 
-Play Magic is a shared tabletop for playing Magic with friends online. Bring a Moxfield deck, open a Commander or Regular game, and invite up to three other players with a game code or link. There are no accounts to create and no rules engine to get between you and the game.
+Play Magic is a shared tabletop for playing Magic with friends online. Paste a deck list, open a Commander or Regular game, and invite up to three other players with a game code or link. There are no accounts to create and no rules engine to get between you and the game.
 
 ## Around the table
 
-- Import a public Moxfield deck or paste its plain text export.
+- Paste a plain text deck list from a deck builder and optionally save it in your browser for another game.
 - Start with a shuffled deck and seven cards in your private hand. Other players see your hand count, not your cards.
 - Move cards among your hand, battlefield, graveyard, exile, and library. Tap cards, add counters, draw, shuffle, and track life and player counters.
 - Explore the card library between games. Card data and images come from Scryfall.
@@ -12,6 +12,10 @@ Play Magic is a shared tabletop for playing Magic with friends online. Bring a M
 ### Home
 
 ![Play Magic home page](docs/screenshots/home.png)
+
+### Joining a game
+
+![Paste a deck list to join a game](docs/screenshots/join.png)
 
 ### Game
 
@@ -21,10 +25,10 @@ Play Magic is a shared tabletop for playing Magic with friends online. Bring a M
 
 1. Choose **Commander** or **Regular** and create a game.
 2. Share the eight-character code or game link with your friends. A table holds up to four players.
-3. Enter your name and a public Moxfield deck URL. If the URL import fails, use Moxfield's **Export** menu and paste the plain text list instead.
+3. Enter your name and paste a plain text deck list. You can copy one from [Moxfield](https://www.moxfield.com), [Archidekt](https://archidekt.com), or [MTGGoldfish](https://www.mtggoldfish.com). Use lines like `1 Sol Ring` or `1x Sol Ring`, with optional `(SET) 123` printing details. If you want to reuse the list, check **Save this deck in this browser for next time** before joining.
 4. Play as you would at a kitchen table. Click a card to see its details and available actions, or drag it between zones.
 
-Play Magic leaves rules, turn order, commander zones, and card abilities to the players. Your seat is remembered in the browser where you joined; clearing that browser's storage loses access to the seat. The community stats page in the app shows how many games and player seats have been created.
+Play Magic leaves rules, turn order, commander zones, and card abilities to the players. Your seat and saved deck lists are kept in the browser where you joined; clearing that browser's storage removes them. Saved decks are a convenience, limited to ten per browser, and can be removed from the join form. The community stats page in the app shows how many games and player seats have been created.
 
 ## Contributors
 
@@ -58,4 +62,4 @@ An hourly cleanup removes unjoined games after 24 hours and joined games after 3
 
 Game creation is limited to five attempts per IP address per 10 minutes; joining is limited to ten. Excess attempts receive HTTP 429 with a retry time. These in-memory limits reset on server restart and apply per app instance. Behind a reverse proxy, configure trusted forwarded headers so the app sees each visitor's IP address.
 
-Moxfield does not offer a supported public deck API. The URL importer uses its public deck endpoint, which may return HTTP 403; the text export path is the reliable fallback. Sideboard and maybeboard cards are left out of text imports.
+The paste parser accepts common plain text and Arena style `Deck` / `Commander` sections, including quantity prefixes such as `1`, `1x`, or `1 x`. It also strips Archidekt text export category, label, and foil annotations. It skips sideboard, maybeboard, companion, considering, and token sections or category tags. CSV and deck URLs are not supported.

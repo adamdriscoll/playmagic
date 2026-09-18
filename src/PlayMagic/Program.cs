@@ -18,7 +18,6 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 builder.Services.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connectionString));
 builder.Services.AddSingleton<CardCatalogService>();
-builder.Services.AddSingleton<DeckImportService>();
 builder.Services.AddSingleton<GameNotifier>();
 builder.Services.AddSingleton<GameService>();
 builder.Services.AddHostedService<CatalogRefreshWorker>();
@@ -56,13 +55,6 @@ builder.Services.AddHttpClient("Scryfall", client =>
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json;q=0.9, */*;q=0.8");
     client.Timeout = TimeSpan.FromMinutes(10);
 });
-builder.Services.AddHttpClient("Moxfield", client =>
-{
-    client.BaseAddress = new Uri("https://api2.moxfield.com/");
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("PlayMagic/1.0");
-    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-    client.Timeout = TimeSpan.FromSeconds(20);
-});
 
 var app = builder.Build();
 
@@ -93,18 +85,14 @@ app.MapPost("/api/games/{id}/join", async (string id, JoinGameRequest request, G
     try
     {
         var token = await games.JoinAsync(id.ToUpperInvariant(), request.PlayerName ?? "",
-            request.DeckUrl, request.DeckText, request.DeckName);
+            request.DeckText, request.DeckName);
         return Results.Ok(new { value = token });
     }
     catch (DeckImportException exception)
     {
-        return Results.BadRequest(new { message = exception.Message, importFailed = true });
+        return Results.BadRequest(new { message = exception.Message });
     }
     catch (GameActionException exception) { return Results.BadRequest(new { message = exception.Message }); }
-    catch (HttpRequestException)
-    {
-        return Results.BadRequest(new { message = "Could not reach Moxfield. Paste a text export to join.", importFailed = true });
-    }
 }).RequireRateLimiting("join-game");
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.Run();

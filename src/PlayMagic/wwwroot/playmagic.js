@@ -7,11 +7,32 @@ window.playMagic = {
         });
         const result = await response.json();
         return response.ok
-            ? { value: result.value, error: null, importFailed: false }
-            : { value: null, error: result.message || 'Please try again.', importFailed: !!result.importFailed };
+            ? { value: result.value, error: null }
+            : { value: null, error: result.message || 'Please try again.' };
     },
     getToken(gameId) { return localStorage.getItem(`playmagic:${gameId}`); },
     setToken(gameId, token) { localStorage.setItem(`playmagic:${gameId}`, token); },
+    getSavedDecks() {
+        try {
+            const decks = JSON.parse(localStorage.getItem('playmagic:saved-decks') || '[]');
+            return Array.isArray(decks) ? decks : [];
+        } catch { return []; }
+    },
+    saveDeck(name, text) {
+        const label = name.trim() || 'Untitled deck';
+        const decks = this.getSavedDecks().filter(deck => deck.name !== label);
+        decks.unshift({ name: label, text });
+        const saved = decks.slice(0, 10);
+        try { localStorage.setItem('playmagic:saved-decks', JSON.stringify(saved)); }
+        catch { return this.getSavedDecks(); }
+        return saved;
+    },
+    removeSavedDeck(name) {
+        const decks = this.getSavedDecks().filter(deck => deck.name !== name);
+        try { localStorage.setItem('playmagic:saved-decks', JSON.stringify(decks)); }
+        catch { return this.getSavedDecks(); }
+        return decks;
+    },
     copyLink(url) { return navigator.clipboard.writeText(url); },
     draggedCardId: null,
     getDraggedCardId() { return this.draggedCardId; },

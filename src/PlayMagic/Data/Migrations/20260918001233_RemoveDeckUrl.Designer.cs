@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PlayMagic.Data;
 
@@ -10,9 +11,11 @@ using PlayMagic.Data;
 namespace PlayMagic.Data.Migrations
 {
     [DbContext(typeof(PlayMagicDbContext))]
-    partial class PlayMagicDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260918001233_RemoveDeckUrl")]
+    partial class RemoveDeckUrl
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");

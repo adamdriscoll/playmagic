@@ -28,8 +28,8 @@ public sealed class PublicStatsTests
         await Assert.ThrowsExactlyAsync<GameActionException>(() => games.CreateAsync("Unknown"));
         var commanderId = await games.CreateAsync("Commander");
         var regularId = await games.CreateAsync("Regular");
-        await games.JoinAsync(commanderId, "One", null, "10 Island");
-        await games.JoinAsync(regularId, "Two", null, "10 Island");
+        await games.JoinAsync(commanderId, "One", "10 Island");
+        await games.JoinAsync(regularId, "Two", "10 Island");
 
         var beforeSecondJoin = await games.GetPublicStatsAsync();
         Assert.AreEqual(2, beforeSecondJoin.GamesCreated);
@@ -37,11 +37,11 @@ public sealed class PublicStatsTests
         Assert.AreEqual(2, beforeSecondJoin.PlayersJoined);
         Assert.AreEqual(20, beforeSecondJoin.CardsLoaded);
 
-        await games.JoinAsync(commanderId, "Three", null, "10 Island");
-        await games.JoinAsync(commanderId, "Four", null, "10 Island");
-        await games.JoinAsync(commanderId, "Five", null, "10 Island");
+        await games.JoinAsync(commanderId, "Three", "10 Island");
+        await games.JoinAsync(commanderId, "Four", "10 Island");
+        await games.JoinAsync(commanderId, "Five", "10 Island");
         await Assert.ThrowsExactlyAsync<GameActionException>(() =>
-            games.JoinAsync(commanderId, "Six", null, "10 Island"));
+            games.JoinAsync(commanderId, "Six", "10 Island"));
 
         var expected = new PublicStats(2, 1, 1, 0, 5, 50);
         Assert.AreEqual(expected, await games.GetPublicStatsAsync());
@@ -98,7 +98,6 @@ public sealed class PublicStatsTests
         services.AddHttpClient();
         services.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
         services.AddSingleton<CardCatalogService>();
-        services.AddSingleton<DeckImportService>();
         services.AddSingleton<GameNotifier>();
         services.AddSingleton<GameService>();
         return services.BuildServiceProvider();

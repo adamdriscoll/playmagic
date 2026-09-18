@@ -74,7 +74,6 @@ public sealed class Player
     public string Name { get; set; } = "";
     public string TokenHash { get; set; } = "";
     public string DeckName { get; set; } = "";
-    public string? DeckUrl { get; set; }
     public int Life { get; set; }
     public string CountersJson { get; set; } = "{}";
     public DateTimeOffset JoinedUtc { get; set; } = DateTimeOffset.UtcNow;

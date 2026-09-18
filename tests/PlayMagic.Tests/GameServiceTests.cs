@@ -21,7 +21,6 @@ public sealed class GameServiceTests
         registrations.AddHttpClient();
         registrations.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
         registrations.AddSingleton<CardCatalogService>();
-        registrations.AddSingleton<DeckImportService>();
         registrations.AddSingleton<GameNotifier>();
         registrations.AddSingleton<GameService>();
         using var provider = registrations.BuildServiceProvider();
@@ -38,7 +37,7 @@ public sealed class GameServiceTests
         var gameId = await games.CreateAsync("Commander");
         var tokens = new List<string>();
         for (var index = 0; index < 4; index++)
-            tokens.Add(await games.JoinAsync(gameId, $"Player {index + 1}", null, "10 Island"));
+            tokens.Add(await games.JoinAsync(gameId, $"Player {index + 1}", "10 Island"));
 
         var firstView = await games.GetViewAsync(gameId, tokens[0]);
         var secondView = await games.GetViewAsync(gameId, tokens[1]);
@@ -55,7 +54,7 @@ public sealed class GameServiceTests
         await Assert.ThrowsExactlyAsync<GameActionException>(() =>
             games.MoveCardAsync(gameId, tokens[0], secondPlayerCard.Id, CardZones.Battlefield));
         await Assert.ThrowsExactlyAsync<GameActionException>(() =>
-            games.JoinAsync(gameId, "Player 5", null, "10 Island"));
+            games.JoinAsync(gameId, "Player 5", "10 Island"));
     }
 
     [TestMethod]
@@ -68,6 +67,38 @@ public sealed class GameServiceTests
     }
 
     [TestMethod]
+    public void TextImportAcceptsArenaAndDeckBuilderSections()
+    {
+        var deck = DeckImportService.ParseText("Deck\n2 Island (DMU) 265\n1 x Sol Ring (CMM)\n" +
+            "Sideboard\n3 Negate\nCompanion\n1 Lurrus of the Dream-Den\n" +
+            "Commander\n1 Atraxa, Praetors' Voice\n// Maybeboard\n2 Forest\n# Creatures\n1x Birds of Paradise [CN2] 176");
+
+        Assert.HasCount(4, deck.Cards);
+        Assert.AreEqual(2, deck.Cards.Single(card => card.Name == "Island").Quantity);
+        Assert.AreEqual("265", deck.Cards.Single(card => card.Name == "Island").CollectorNumber);
+        Assert.AreEqual("CMM", deck.Cards.Single(card => card.Name == "Sol Ring").SetCode);
+        Assert.IsFalse(deck.Cards.Any(card => card.Name is "Negate" or "Lurrus of the Dream-Den" or "Forest"));
+    }
+
+    [TestMethod]
+    public void TextImportRequiresCards()
+    {
+        Assert.ThrowsExactly<DeckImportException>(() => DeckImportService.ParseText("https://www.moxfield.com/decks/example"));
+        Assert.ThrowsExactly<DeckImportException>(() => DeckImportService.ParseText("Sideboard\n2 Negate"));
+    }
+
+    [TestMethod]
+    public void TextImportHandlesArchidektCategoryAndLabelAnnotations()
+    {
+        var deck = DeckImportService.ParseText("1x Sol Ring (CMM) *F* [Artifacts] ^Favorite,#000000^\n" +
+            "1x Island (DMU) [Lands]\n1x Negate (M20) [Sideboard] ^Maybe,#000000^");
+
+        Assert.HasCount(2, deck.Cards);
+        Assert.AreEqual("CMM", deck.Cards.Single(card => card.Name == "Sol Ring").SetCode);
+        Assert.IsFalse(deck.Cards.Any(card => card.Name == "Negate"));
+    }
+
+    [TestMethod]
     public async Task CleanupRemovesExpiredGamesAndCascadesToSeatsAndCards()
     {
         using var connection = new SqliteConnection("Data Source=:memory:");
@@ -77,7 +108,6 @@ public sealed class GameServiceTests
         registrations.AddHttpClient();
         registrations.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
         registrations.AddSingleton<CardCatalogService>();
-        registrations.AddSingleton<DeckImportService>();
         registrations.AddSingleton<GameNotifier>();
         registrations.AddSingleton<GameService>();
         using var provider = registrations.BuildServiceProvider();
@@ -138,7 +168,6 @@ public sealed class GameServiceTests
             .ConfigurePrimaryHttpMessageHandler(() => handler);
         registrations.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
         registrations.AddSingleton<CardCatalogService>();
-        registrations.AddSingleton<DeckImportService>();
         registrations.AddSingleton<GameNotifier>();
         registrations.AddSingleton<GameService>();
         using var provider = registrations.BuildServiceProvider();
@@ -154,7 +183,7 @@ public sealed class GameServiceTests
 
         var games = provider.GetRequiredService<GameService>();
         var gameId = await games.CreateAsync("Commander");
-        var token = await games.JoinAsync(gameId, "Player", null,
+        var token = await games.JoinAsync(gameId, "Player",
             "1 Kings Bay Clock Tower (SLD) 2217 *F*\n" +
             "1 Kitezh, Sunken City (SLD) 1506 *F*\n" +
             "1 Shu Jing Meteorite (SLD) 7062 *F*\n" +
