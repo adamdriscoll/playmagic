@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Net;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using PlayMagic.Components;
 using PlayMagic.Data;
@@ -9,6 +11,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardedForHeaderName = "CF-Connecting-IP";
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
 var connectionString = builder.Configuration.GetConnectionString("PlayMagic");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -58,6 +69,8 @@ builder.Services.AddHttpClient("Scryfall", client =>
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PlayMagicDbContext>();
@@ -75,6 +88,7 @@ app.UseRouting();
 app.UseRateLimiter();
 app.UseAntiforgery();
 app.MapStaticAssets();
+app.MapGet("/healthz", () => Results.Ok("ok"));
 app.MapPost("/api/games", async (CreateGameRequest request, GameService games) =>
 {
     try { return Results.Ok(new { value = await games.CreateAsync(request.Format) }); }

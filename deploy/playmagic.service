@@ -1,0 +1,26 @@
+[Unit]
+Description=Play Magic ASP.NET Core app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=playmagic
+Group=playmagic
+WorkingDirectory=/opt/playmagic/current
+ExecStart=/usr/bin/dotnet /opt/playmagic/current/PlayMagic.dll
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
+Environment="ConnectionStrings__PlayMagic=Data Source=/var/lib/playmagic/playmagic.db"
+StateDirectory=playmagic
+StateDirectoryMode=0770
+UMask=0007
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

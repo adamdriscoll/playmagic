@@ -54,6 +54,8 @@ The tests cover four-seat limits, private hands, card ownership, text import sec
 
 Open the repository root in VS Code and select **PlayMagic (HTTPS)** in Run and Debug. F5 restores and builds the solution, starts the app, and opens its URL. **Terminal → Run Task** offers `restore`, `build`, `build: Release`, `test`, and `run`. The C# extension is recommended by the workspace. GitHub Actions restores, builds in Release mode, and runs the tests on pushes and pull requests.
 
+For production hosting on a DigitalOcean Droplet behind Cloudflare, see the [deployment guide](deploy/README.md). The manual **Publish to production** workflow builds, tests, and deploys the app after the one-time server and GitHub environment setup.
+
 ### Operations and data
 
 The public `/stats` page counts game rooms created, games played, player joins, and cards loaded into decks, with a format breakdown. A game counts as played when its second player joins. The totals remain after game cleanup. On upgrade, the migration initializes counters from games still in the database; previously pruned games cannot be recovered.

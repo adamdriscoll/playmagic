@@ -1,0 +1,75 @@
+name: Publish to production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playmagic-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore PlayMagic.slnx
+      - name: Build
+        run: dotnet build PlayMagic.slnx --configuration Release --no-restore
+      - name: Test
+        run: dotnet test PlayMagic.slnx --configuration Release --no-build --no-restore
+      - name: Publish
+        run: dotnet publish src/PlayMagic/PlayMagic.csproj --configuration Release --no-restore --output ./publish
+      - name: Configure deployment SSH
+        shell: bash
+        env:
+          PROD_HOST: ${{ vars.PROD_HOST }}
+          PROD_URL: ${{ vars.PROD_URL }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in PROD_HOST PROD_URL PROD_SSH_KEY PROD_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing production secret or variable: $name" >&2
+              exit 1
+            fi
+          done
+          if [[ ! "$PROD_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+            echo "PROD_HOST must be a DNS name or IPv4 address" >&2
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Copy and activate release
+        shell: bash
+        env:
+          PROD_HOST: ${{ vars.PROD_HOST }}
+        run: |
+          set -euo pipefail
+          release_id="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          server="playmagic-deploy@${PROD_HOST}"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 "$server" \
+            "install -d -m 750 /opt/playmagic/releases/$release_id"
+          rsync -az --delete -e 'ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15' \
+            ./publish/ "$server:/opt/playmagic/releases/$release_id/"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 "$server" \
+            "bash -s -- '$release_id'" < deploy/activate.sh
+      - name: Check public site
+        shell: bash
+        env:
+          PROD_URL: ${{ vars.PROD_URL }}
+        run: curl --fail --silent --show-error --location --retry 5 --retry-delay 3 --max-time 10 "${PROD_URL%/}/healthz"
