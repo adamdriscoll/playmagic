@@ -157,6 +157,21 @@ public sealed class GameServiceTests
     }
 
     [TestMethod]
+    public void TextImportParsesMoxfieldListPrintingsAndSkipsSideboard()
+    {
+        var text = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "MoxfieldListPrintingExport.txt"));
+        var deck = DeckImportService.ParseText(text);
+
+        Assert.HasCount(19, deck.Cards);
+        Assert.AreEqual(60, deck.Cards.Sum(card => card.Quantity));
+        Assert.IsTrue(deck.Cards.All(card => card.SetCode is not null && card.CollectorNumber is not null));
+        Assert.AreEqual("A25-46", deck.Cards.Single(card => card.Name == "Brainstorm").CollectorNumber);
+        Assert.AreEqual("EMA-45", deck.Cards.Single(card => card.Name == "Deep Analysis").CollectorNumber);
+        Assert.AreEqual("IMA-76", deck.Cards.Single(card => card.Name == "Thought Scour").CollectorNumber);
+        Assert.IsFalse(deck.Cards.Any(card => card.Name == "Hydroblast"));
+    }
+
+    [TestMethod]
     public async Task AlternatePrintedNamesResolveToOracleCards()
     {
         using var connection = new SqliteConnection("Data Source=:memory:");

@@ -1,0 +1,27 @@
+4 Brainstorm (PLST) A25-46
+2 Cast Down (2XM) 79
+4 Contaminated Aquifer (DMU) 245
+4 Counterspell (MH2) 267
+2 Deep Analysis (PLST) EMA-45
+1 Extract a Confession (MKM) 84
+2 Gurmag Angler (PLST) UMA-102
+2 Ice Tunnel (KHM) 262
+10 Island (J25) 86
+4 Lórien Revealed (LTR) 60
+4 Mental Note (SLD) 2154
+1 Murmuring Mystic (C20) 118
+4 Sneaky Snacker (MH3) 205
+4 Snuff Out (WHO) 222
+1 Spell Pierce (NEO) 80
+1 Suffocating Fumes (PLST) IKO-100
+4 Thought Scour (PLST) IMA-76
+4 Tolarian Terror (DMU) 72
+2 Unexpected Fangs (IKO) 102
+
+SIDEBOARD:
+3 Annul (THS) 38
+2 Arms of Hadar (CLB) 113
+2 Blue Elemental Blast (4ED) 63
+4 Hydroblast (EMA) 55
+2 Nihil Spellbomb (A25) 226
+2 Steel Sabotage (2XM) 70

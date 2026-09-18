@@ -78,7 +78,7 @@ public sealed partial class DeckImportService
     [GeneratedRegex("^(\\d{1,3})\\s*x?\\s+(.+)$", RegexOptions.IgnoreCase)]
     private static partial Regex DeckLinePattern();
 
-    [GeneratedRegex("\\s+\\((?<set>[A-Za-z0-9]{2,8})\\)(?:\\s+(?<collector>\\d+[A-Za-z0-9-]*))?(?:\\s+\\*[A-Za-z]+\\*)*$")]
+    [GeneratedRegex("\\s+\\((?<set>[A-Za-z0-9]{2,8})\\)(?:\\s+(?<collector>[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*))?(?:\\s+\\*[A-Za-z]+\\*)*$")]
     private static partial Regex PrintingSuffixPattern();
 
     [GeneratedRegex("\\s+\\[[A-Za-z0-9]{2,8}\\].*$")]

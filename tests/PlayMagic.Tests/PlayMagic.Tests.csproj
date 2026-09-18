@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <None Update="Fixtures\MoxfieldExport.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures\MoxfieldListPrintingExport.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
