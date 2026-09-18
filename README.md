@@ -1,46 +1,61 @@
-# PlayMagic
+# Play Magic
 
-A small, account-free Magic tabletop built with ASP.NET Core 10, Blazor interactive server components, EF Core, and SQLite.
+Play Magic is a shared tabletop for playing Magic with friends online. Bring a Moxfield deck, open a Commander or Regular game, and invite up to three other players with a game code or link. There are no accounts to create and no rules engine to get between you and the game.
 
-## Run
+## Around the table
+
+- Import a public Moxfield deck or paste its plain text export.
+- Start with a shuffled deck and seven cards in your private hand. Other players see your hand count, not your cards.
+- Move cards among your hand, battlefield, graveyard, exile, and library. Tap cards, add counters, draw, shuffle, and track life and player counters.
+- Explore the card library between games. Card data and images come from Scryfall.
+
+### Home
+
+![Play Magic home page](docs/screenshots/home.png)
+
+### Game
+
+![A Play Magic game in progress](docs/screenshots/game.png)
+
+## How to play
+
+1. Choose **Commander** or **Regular** and create a game.
+2. Share the eight-character code or game link with your friends. A table holds up to four players.
+3. Enter your name and a public Moxfield deck URL. If the URL import fails, use Moxfield's **Export** menu and paste the plain text list instead.
+4. Play as you would at a kitchen table. Click a card to see its details and available actions, or drag it between zones.
+
+Play Magic leaves rules, turn order, commander zones, and card abilities to the players. Your seat is remembered in the browser where you joined; clearing that browser's storage loses access to the seat. The community stats page in the app shows how many games and player seats have been created.
+
+## Contributors
+
+### Run locally
+
+Play Magic uses ASP.NET Core 10, Blazor interactive server components, EF Core, and SQLite. From the repository root, run:
 
 ```powershell
 dotnet run --project src/PlayMagic/PlayMagic.csproj --launch-profile https
 ```
 
-Open the URL printed by `dotnet run`. On first startup the app downloads Scryfall's English Oracle Cards bulk file and indexes it in `src/PlayMagic/Data/playmagic.db`. The home page can show a live random card while that first import runs. A background worker checks for a new bulk file every 12 hours and refreshes the local catalog once it is a week old. Card images stay on Scryfall's image host.
+Open the URL printed by `dotnet run`. On first startup, the app downloads Scryfall's English Oracle Cards bulk file and indexes it in `src/PlayMagic/Data/playmagic.db`. The home page can show a live random card while that first import runs. A background worker checks for a new bulk file every 12 hours and refreshes the local catalog once it is a week old. Card images remain on Scryfall's image host.
 
-The default SQLite path is under the app's `Data` directory. Set `ConnectionStrings__PlayMagic` to use another SQLite connection string. Schema migrations run at startup.
+The default SQLite path is under the app's `Data` directory. Set `ConnectionStrings__PlayMagic` to use another SQLite connection string. Schema migrations run at startup. Game state survives server restarts; live updates currently assume one app server instance.
 
-The public `/stats` page shows cumulative game rooms created, games played, player joins, and cards loaded into decks, plus a format breakdown. A game is counted as played when its second player joins. These totals live in a separate counter table and remain after game cleanup. On upgrade, the migration initializes the counters from games still present in the database; previously pruned games cannot be recovered.
-
-## Play
-
-1. Create a Commander or Regular game on the home page.
-2. Share the eight-character code or game URL. Up to four people can join.
-3. Each player enters a name and public Moxfield deck URL. If Moxfield blocks automatic access, paste the plain text list from Moxfield's **Export** menu instead.
-4. Each deck is shuffled and starts with seven cards in hand. Drag cards among your hand, battlefield, graveyard, exile, and library drop areas. Click a card to tap it, move it, or change named counters. Use the player controls for life, poison or other named counters, drawing, and shuffling.
-
-Hands are private to their owning browser; only hand counts are shown to opponents. An anonymous seat token is stored in that browser's local storage, so clearing browser storage loses access to that seat. Game state remains in SQLite across server restarts. Live updates currently assume one app server instance.
-
-An hourly cleanup removes unjoined games after 24 hours and joined games after 30 days without activity, including their seats and cards. Viewing a game with a valid seat token counts as activity. Existing games get a fresh grace period when the activity tracking migration runs.
-
-Game creation is limited to five attempts per IP address per 10 minutes, and joining is limited to ten attempts per IP address per 10 minutes. Excess attempts receive HTTP 429 with a retry time. These in-memory limits reset on server restart and apply per app instance. If deployed behind a reverse proxy, configure trusted forwarded headers so the app sees each visitor's IP address.
-
-The tabletop does not enforce Magic rules, turn stages, commander zones, or card abilities. Sideboard and maybeboard cards are left out of text imports.
-
-Moxfield does not offer a supported public deck API. The URL importer uses its public deck endpoint, which may return HTTP 403; the text export path is the reliable fallback.
-
-## Verify
+### Verify changes
 
 ```powershell
 dotnet test PlayMagic.slnx
 ```
 
-The tests cover four-seat limits, private hands, card ownership, and text import sections.
+The tests cover four-seat limits, private hands, card ownership, text import sections, and public statistics.
 
-## VS Code and CI
+Open the repository root in VS Code and select **PlayMagic (HTTPS)** in Run and Debug. F5 restores and builds the solution, starts the app, and opens its URL. **Terminal → Run Task** offers `restore`, `build`, `build: Release`, `test`, and `run`. The C# extension is recommended by the workspace. GitHub Actions restores, builds in Release mode, and runs the tests on pushes and pull requests.
 
-Open the repository root in VS Code and select **PlayMagic (HTTPS)** in Run and Debug. F5 restores and builds the solution, starts the web app, and opens its URL. **Terminal → Run Task** also offers `restore`, `build`, `build: Release`, `test`, and `run`. The C# extension is recommended by the workspace.
+### Operations and data
 
-The GitHub Actions workflow restores, builds in Release mode, and runs the tests on pushes and pull requests.
+The public `/stats` page counts game rooms created, games played, player joins, and cards loaded into decks, with a format breakdown. A game counts as played when its second player joins. The totals remain after game cleanup. On upgrade, the migration initializes counters from games still in the database; previously pruned games cannot be recovered.
+
+An hourly cleanup removes unjoined games after 24 hours and joined games after 30 days without activity, including their seats and cards. Viewing a game with a valid seat token counts as activity. Existing games get a fresh grace period when the activity tracking migration runs.
+
+Game creation is limited to five attempts per IP address per 10 minutes; joining is limited to ten. Excess attempts receive HTTP 429 with a retry time. These in-memory limits reset on server restart and apply per app instance. Behind a reverse proxy, configure trusted forwarded headers so the app sees each visitor's IP address.
+
+Moxfield does not offer a supported public deck API. The URL importer uses its public deck endpoint, which may return HTTP 403; the text export path is the reliable fallback. Sideboard and maybeboard cards are left out of text imports.
