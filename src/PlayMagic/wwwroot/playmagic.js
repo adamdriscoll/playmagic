@@ -1,4 +1,21 @@
 window.playMagic = {
+    preloadImage(url) {
+        return new Promise(resolve => {
+            const image = new Image();
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                resolve();
+            };
+            const timeout = setTimeout(finish, 4000);
+            image.onload = finish;
+            image.onerror = finish;
+            image.src = url;
+            if (image.complete) finish();
+        });
+    },
     async post(path, payload) {
         const response = await fetch(path, {
             method: 'POST',

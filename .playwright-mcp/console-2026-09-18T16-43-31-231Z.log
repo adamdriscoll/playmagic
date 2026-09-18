@@ -1,0 +1,4 @@
+[     496ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5187/PlayMagic.y7duucrrx8.styles.css:0
+[     496ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5187/Components/Layout/ReconnectModal.abdmv1u4y3.razor.js:0
+[     531ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5187/_framework/blazor.web.wyu7y4jcvb.js:0
+[     917ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:5187/favicon.ico:0

@@ -45,13 +45,19 @@
             else
             {
                 <div class="feature-card-wrap">
-                    @if (randomCard.ImageUrl is not null) { <img class="feature-card" src="@randomCard.ImageUrl" alt="@randomCard.Name" /> }
-                    else { <div class="feature-placeholder">@randomCard.Name</div> }
+                    <div class="draw-stack">
+                        <div @key="drawVersion" class="feature-card-surface @drawPhase">
+                            @if (randomCard.ImageUrl is not null) { <img class="feature-card" src="@randomCard.ImageUrl" alt="@randomCard.Name" /> }
+                            else { <div class="feature-placeholder">@randomCard.Name</div> }
+                        </div>
+                    </div>
                 </div>
-                <h2>@randomCard.Name</h2>
-                <p>@randomCard.TypeLine</p>
+                <div class="feature-card-details @drawPhase">
+                    <h2>@randomCard.Name</h2>
+                    <p>@randomCard.TypeLine</p>
+                </div>
             }
-            <button class="outline-button" @onclick="NewRandomCard" disabled="@loadingCard">Surprise me <span>↻</span></button>
+            <button class="outline-button" @onclick="NewRandomCard" disabled="@loadingCard">@(loadingCard ? "Drawing…" : "Surprise me") <span aria-hidden="true">↻</span></button>
         </div>
     </section>
 
@@ -84,6 +90,8 @@
     private string catalogStatus = "";
     private bool busy;
     private bool loadingCard;
+    private string drawPhase = "";
+    private int drawVersion;
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,9 +102,31 @@
 
     private async Task NewRandomCard()
     {
+        if (loadingCard) return;
         loadingCard = true;
-        try { randomCard = await Catalog.GetRandomAsync(); }
-        finally { loadingCard = false; }
+        StateHasChanged();
+        try
+        {
+            var nextCard = await Catalog.GetRandomAsync();
+            if (nextCard is null) return;
+            if (nextCard.ImageUrl is not null)
+                await JS.InvokeVoidAsync("playMagic.preloadImage", nextCard.ImageUrl);
+
+            drawPhase = "draw-discard";
+            StateHasChanged();
+            await Task.Delay(260);
+
+            randomCard = nextCard;
+            drawVersion++;
+            drawPhase = "draw-reveal";
+            StateHasChanged();
+            await Task.Delay(560);
+        }
+        finally
+        {
+            drawPhase = "";
+            loadingCard = false;
+        }
     }
 
     private async Task CreateGame()

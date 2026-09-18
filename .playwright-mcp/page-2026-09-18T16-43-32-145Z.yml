@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - link "✦ Play Magic" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - navigation "Main navigation" [ref=e5]:
+        - link "Home" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - link "Stats" [ref=e7] [cursor=pointer]:
+          - /url: /stats
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: PLAY TOGETHER, ANYWHERE
+        - heading [level=1] [ref=e11]:
+          - text: Your table.
+          - emphasis [ref=e12]: Your game.
+        - paragraph [ref=e13]: Paste your deck list, invite up to three friends, and play the way you would at a kitchen table.
+        - generic [ref=e14]:
+          - heading "Start a game" [level=2] [ref=e15]
+          - paragraph [ref=e16]: Pick a format. Share the game code after creating your table.
+          - group "Game format" [ref=e17]:
+            - button "Commander" [ref=e18]
+            - button "Regular" [ref=e19]
+          - button "Create game ↗" [ref=e20]
+          - generic [ref=e21]:
+            - text: Have a code?
+            - textbox "Game code" [ref=e22]:
+              - /placeholder: ENTER CODE
+            - button "Join →" [ref=e23]
+      - generic [ref=e24]:
+        - generic [ref=e25]: CARD DISCOVERY✦
+        - img "Growth Cycle" [ref=e29]
+        - generic [ref=e30]:
+          - heading "Growth Cycle" [level=2] [ref=e31]
+          - paragraph [ref=e32]: Instant
+        - button "Surprise me" [ref=e33]: Surprise me ↻
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]: THE CARD LIBRARY
+        - heading "Find a card" [level=2] [ref=e37]
+        - paragraph [ref=e38]: Search the local English Oracle catalog. Images load from Scryfall.
+      - generic [ref=e40]:
+        - textbox "Search cards" [ref=e41]:
+          - /placeholder: Search card names…
+        - button "Search" [ref=e42]
+    - generic [ref=e43]:
+      - text: Card data and images by
+      - link "Scryfall" [ref=e44] [cursor=pointer]:
+        - /url: https://scryfall.com
+      - text: . 38,883 cards indexed.
+      - link "GitHub project" [ref=e45] [cursor=pointer]:
+        - /url: https://github.com/adamdriscoll/playmagic
+  - generic [ref=e46]:
+    - text: An unhandled error has occurred.
+    - link "Reload" [ref=e47] [cursor=pointer]:
+      - /url: .
+    - text: 🗙

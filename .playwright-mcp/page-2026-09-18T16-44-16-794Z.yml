@@ -1,0 +1,59 @@
+- main [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - link "✦ Play Magic" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+    - navigation "Main navigation" [ref=f1e5]:
+      - link "Home" [ref=f1e6] [cursor=pointer]:
+        - /url: /
+      - link "Stats" [ref=f1e7] [cursor=pointer]:
+        - /url: /stats
+  - generic [ref=f1e8]:
+    - generic [ref=f1e9]:
+      - generic [ref=f1e10]: PLAY TOGETHER, ANYWHERE
+      - heading [level=1] [ref=f1e11]:
+        - text: Your table.
+        - emphasis [ref=f1e12]: Your game.
+      - paragraph [ref=f1e13]: Paste your deck list, invite up to three friends, and play the way you would at a kitchen table.
+      - generic [ref=f1e14]:
+        - heading "Start a game" [level=2] [ref=f1e15]
+        - paragraph [ref=f1e16]: Pick a format. Share the game code after creating your table.
+        - group "Game format" [ref=f1e17]:
+          - button "Commander" [ref=f1e18] [cursor=pointer]
+          - button "Regular" [ref=f1e19] [cursor=pointer]
+        - button "Create game ↗" [ref=f1e20] [cursor=pointer]:
+          - text: Create game
+          - generic [ref=f1e21]: ↗
+        - generic [ref=f1e22]:
+          - generic [ref=f1e23]: Have a code?
+          - textbox "Game code" [ref=f1e24]:
+            - /placeholder: ENTER CODE
+          - button "Join →" [ref=f1e25] [cursor=pointer]
+    - generic [ref=f1e26]:
+      - generic [ref=f1e27]:
+        - generic [ref=f1e28]: CARD DISCOVERY
+        - generic [ref=f1e29]: ✦
+      - generic [ref=f1e31]:
+        - text: ✦
+        - img "Huntmaster Liger" [ref=f1e52]
+      - generic [ref=f1e34]:
+        - heading "Huntmaster Liger" [level=2] [ref=f1e53]
+        - paragraph [ref=f1e36]: Creature — Cat
+      - button "Drawing…" [disabled] [ref=f1e54]:
+        - text: Drawing…
+        - generic [aria-hidden] [ref=f1e38]: ↻
+  - generic [ref=f1e39]:
+    - generic [ref=f1e40]:
+      - generic [ref=f1e41]: THE CARD LIBRARY
+      - heading "Find a card" [level=2] [ref=f1e42]
+      - paragraph [ref=f1e43]: Search the local English Oracle catalog. Images load from Scryfall.
+    - generic [ref=f1e45]:
+      - textbox "Search cards" [ref=f1e46]:
+        - /placeholder: Search card names…
+      - button "Search" [ref=f1e47] [cursor=pointer]
+  - generic [ref=f1e48]:
+    - text: Card data and images by
+    - link "Scryfall" [ref=f1e49] [cursor=pointer]:
+      - /url: https://scryfall.com
+    - text: . 38,883 cards indexed.
+    - link "GitHub project" [ref=f1e50] [cursor=pointer]:
+      - /url: https://github.com/adamdriscoll/playmagic
