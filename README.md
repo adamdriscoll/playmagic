@@ -28,7 +28,7 @@ Play Magic is a shared tabletop for playing Magic with friends online. Paste a d
 3. Enter your name and paste a plain text deck list. You can copy one from [Moxfield](https://www.moxfield.com), [Archidekt](https://archidekt.com), or [MTGGoldfish](https://www.mtggoldfish.com). Use lines like `1 Sol Ring` or `1x Sol Ring`, with optional `(SET) 123` printing details. If you want to reuse the list, check **Save this deck in this browser for next time** before joining.
 4. Play as you would at a kitchen table. Click a card to see its details and available actions, or drag it between zones.
 
-Play Magic leaves rules, turn order, commander zones, and card abilities to the players. Your seat and saved deck lists are kept in the browser where you joined; clearing that browser's storage removes them. Saved decks are a convenience, limited to ten per browser, and can be removed from the join form. The community stats page in the app shows how many games and player seats have been created.
+Play Magic leaves rules, turn order, commander zones, and card abilities to the players. Your seat and saved deck lists are kept in the browser where you joined; clearing that browser's storage removes them. Saved decks are a convenience, limited to ten per browser, and can be removed from the join form. The community stats page in the app shows active tables alongside cumulative game, player, deck, and card discovery totals.
 
 ## Contributors
 
@@ -58,7 +58,7 @@ For production hosting on a DigitalOcean Droplet behind Cloudflare, see the [dep
 
 ### Operations and data
 
-The public `/stats` page counts game rooms created, games played, player joins, and cards loaded into decks, with a format breakdown. A game counts as played when its second player joins. The totals remain after game cleanup. On upgrade, the migration initializes counters from games still in the database; previously pruned games cannot be recovered.
+The public `/stats` page counts active tables, game rooms created, games played, player joins, cards loaded into decks, and random cards drawn, with a format breakdown. Active tables are rooms that have not reached their cleanup deadline. A game counts as played when its second player joins. The cumulative totals remain after game cleanup. On upgrade, the migration initializes counters from games still in the database; previously pruned games cannot be recovered.
 
 An hourly cleanup removes unjoined games after 24 hours and joined games after 30 days without activity, including their seats and cards. Viewing a game with a valid seat token counts as activity. Existing games get a fresh grace period when the activity tracking migration runs.
 

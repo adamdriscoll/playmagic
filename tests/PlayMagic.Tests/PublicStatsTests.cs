@@ -37,6 +37,7 @@ public sealed class PublicStatsTests
         Assert.AreEqual(2, beforeSecondJoin.PlayersJoined);
         Assert.AreEqual(20, beforeSecondJoin.CardsLoaded);
         Assert.AreEqual(0, beforeSecondJoin.RandomCardsDrawn);
+        Assert.AreEqual(2, beforeSecondJoin.ActiveTables);
 
         await games.JoinAsync(commanderId, "Three", "10 Island");
         await games.JoinAsync(commanderId, "Four", "10 Island");
@@ -46,7 +47,7 @@ public sealed class PublicStatsTests
         await games.RecordRandomCardDrawAsync();
         await games.RecordRandomCardDrawAsync();
 
-        var expected = new PublicStats(2, 1, 1, 0, 5, 50, 2);
+        var expected = new PublicStats(2, 1, 1, 0, 5, 50, 2, 2);
         Assert.AreEqual(expected, await games.GetPublicStatsAsync());
 
         await using (var db = await factory.CreateDbContextAsync())
@@ -55,7 +56,7 @@ public sealed class PublicStatsTests
                 setters.SetProperty(game => game.LastActivityUtc, DateTime.UtcNow.AddDays(-31)));
         }
         Assert.AreEqual(2, await games.CleanupExpiredAsync());
-        Assert.AreEqual(expected, await games.GetPublicStatsAsync());
+        Assert.AreEqual(expected with { ActiveTables = 0 }, await games.GetPublicStatsAsync());
     }
 
     [TestMethod]
@@ -90,8 +91,34 @@ public sealed class PublicStatsTests
         await using (var db = await factory.CreateDbContextAsync())
             await db.Database.MigrateAsync();
 
-        Assert.AreEqual(new PublicStats(3, 2, 1, 1, 5, 4, 0),
+        Assert.AreEqual(new PublicStats(3, 2, 1, 1, 5, 4, 0, 3),
             await provider.GetRequiredService<GameService>().GetPublicStatsAsync());
+    }
+
+    [TestMethod]
+    public async Task ActiveTablesExcludeExpiredRoomsBeforeCleanupRuns()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        using var provider = CreateServices(connection);
+        var factory = provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.Games.AddRange(
+                new Game { Id = "NEWEMPTY", LastActivityUtc = DateTime.UtcNow.AddHours(-23) },
+                new Game { Id = "OLDEMPTY", LastActivityUtc = DateTime.UtcNow.AddHours(-25) },
+                new Game { Id = "NEWPLAY1", LastActivityUtc = DateTime.UtcNow.AddDays(-29) },
+                new Game { Id = "OLDPLAY1", LastActivityUtc = DateTime.UtcNow.AddDays(-31) });
+            db.Players.AddRange(
+                new Player { Id = "new-player", GameId = "NEWPLAY1", TokenHash = "new" },
+                new Player { Id = "old-player", GameId = "OLDPLAY1", TokenHash = "old" });
+            await db.SaveChangesAsync();
+        }
+
+        var stats = await provider.GetRequiredService<GameService>().GetPublicStatsAsync();
+
+        Assert.AreEqual(2, stats.ActiveTables);
     }
 
     private static ServiceProvider CreateServices(SqliteConnection connection)

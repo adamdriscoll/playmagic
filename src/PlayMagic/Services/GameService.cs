@@ -20,9 +20,10 @@ public sealed record PlayerView(string Id, string Name, string DeckName, int Lif
 /// <summary>A game snapshot filtered for one anonymous seat.</summary>
 public sealed record GameView(string Id, string Format, string MyPlayerId, List<PlayerView> Players);
 
-/// <summary>Cumulative public totals, independent of retained game records.</summary>
+/// <summary>Public historical totals and the current number of active tables.</summary>
 public sealed record PublicStats(long GamesCreated, long GamesPlayed, long CommanderGamesPlayed,
-    long RegularGamesPlayed, long PlayersJoined, long CardsLoaded, long RandomCardsDrawn);
+    long RegularGamesPlayed, long PlayersJoined, long CardsLoaded, long RandomCardsDrawn,
+    long ActiveTables);
 
 /// <summary>A user-facing game action error.</summary>
 public sealed class GameActionException(string message) : Exception(message);
@@ -105,11 +106,18 @@ public sealed class GameService(
     public async Task<PublicStats> GetPublicStatsAsync()
     {
         await using var db = await contextFactory.CreateDbContextAsync();
-        return await db.PublicStatistics.AsNoTracking()
+        var totals = await db.PublicStatistics.AsNoTracking()
             .Select(stats => new PublicStats(stats.GamesCreated, stats.GamesPlayed,
                 stats.CommanderGamesPlayed, stats.RegularGamesPlayed, stats.PlayersJoined,
-                stats.CardsLoaded, stats.RandomCardsDrawn))
-            .SingleOrDefaultAsync() ?? new PublicStats(0, 0, 0, 0, 0, 0, 0);
+                stats.CardsLoaded, stats.RandomCardsDrawn, 0))
+            .SingleOrDefaultAsync() ?? new PublicStats(0, 0, 0, 0, 0, 0, 0, 0);
+        var now = DateTime.UtcNow;
+        var emptyCutoff = now - EmptyGameLifetime;
+        var inactiveCutoff = now - InactiveGameLifetime;
+        var activeTables = await db.Games.AsNoTracking().LongCountAsync(game =>
+            game.LastActivityUtc >= inactiveCutoff &&
+            (game.LastActivityUtc >= emptyCutoff || db.Players.Any(player => player.GameId == game.Id)));
+        return totals with { ActiveTables = activeTables };
     }
 
     public async Task RecordRandomCardDrawAsync()

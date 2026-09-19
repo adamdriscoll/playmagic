@@ -26,6 +26,11 @@
             <p>Tables where at least two players joined.</p>
         </article>
         <article class="stat-card">
+            <div class="stat-label">ACTIVE TABLES</div>
+            <strong>@stats.ActiveTables.ToString("N0")</strong>
+            <p>Rooms still open for players to join or return to.</p>
+        </article>
+        <article class="stat-card">
             <div class="stat-label">GAME ROOMS CREATED</div>
             <strong>@stats.GamesCreated.ToString("N0")</strong>
             <p>Every Commander and Regular room opened.</p>
@@ -61,12 +66,12 @@
         </div>
     </section>
 
-    <p class="stats-note">These totals stay in a separate counter table when inactive games are removed. Totals from before this page launched include only games still stored at the time of the upgrade.</p>
+    <p class="stats-note">Historical totals stay in a separate counter table when inactive games are removed. Active tables is a live count of rooms that have not expired. Totals from before this page launched include only games still stored at the time of the upgrade.</p>
     <footer><a href="/">← Back to the tabletop</a></footer>
 </main>
 
 @code {
-    private PublicStats stats = new(0, 0, 0, 0, 0, 0, 0);
+    private PublicStats stats = new(0, 0, 0, 0, 0, 0, 0, 0);
     private int CommanderPercent => stats.GamesPlayed == 0 ? 0 : (int)Math.Round(100d * stats.CommanderGamesPlayed / stats.GamesPlayed);
     private int RegularPercent => stats.GamesPlayed == 0 ? 0 : (int)Math.Round(100d * stats.RegularGamesPlayed / stats.GamesPlayed);
 
