@@ -3,6 +3,7 @@
 @using PlayMagic.Data
 @using PlayMagic.Services
 @inject CardCatalogService Catalog
+@inject GameService Games
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 
@@ -120,6 +121,7 @@
             drawVersion++;
             drawPhase = "draw-reveal";
             StateHasChanged();
+            await Games.RecordRandomCardDrawAsync();
             await Task.Delay(560);
         }
         finally

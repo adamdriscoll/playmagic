@@ -22,7 +22,7 @@ public sealed record GameView(string Id, string Format, string MyPlayerId, List<
 
 /// <summary>Cumulative public totals, independent of retained game records.</summary>
 public sealed record PublicStats(long GamesCreated, long GamesPlayed, long CommanderGamesPlayed,
-    long RegularGamesPlayed, long PlayersJoined, long CardsLoaded);
+    long RegularGamesPlayed, long PlayersJoined, long CardsLoaded, long RandomCardsDrawn);
 
 /// <summary>A user-facing game action error.</summary>
 public sealed class GameActionException(string message) : Exception(message);
@@ -107,8 +107,15 @@ public sealed class GameService(
         await using var db = await contextFactory.CreateDbContextAsync();
         return await db.PublicStatistics.AsNoTracking()
             .Select(stats => new PublicStats(stats.GamesCreated, stats.GamesPlayed,
-                stats.CommanderGamesPlayed, stats.RegularGamesPlayed, stats.PlayersJoined, stats.CardsLoaded))
-            .SingleOrDefaultAsync() ?? new PublicStats(0, 0, 0, 0, 0, 0);
+                stats.CommanderGamesPlayed, stats.RegularGamesPlayed, stats.PlayersJoined,
+                stats.CardsLoaded, stats.RandomCardsDrawn))
+            .SingleOrDefaultAsync() ?? new PublicStats(0, 0, 0, 0, 0, 0, 0);
+    }
+
+    public async Task RecordRandomCardDrawAsync()
+    {
+        await using var db = await contextFactory.CreateDbContextAsync();
+        await IncrementStatisticsAsync(db, randomCardsDrawn: 1);
     }
 
     public async Task<GameInfo?> GetInfoAsync(string gameId)
@@ -372,19 +379,21 @@ public sealed class GameService(
 
     private static async Task IncrementStatisticsAsync(PlayMagicDbContext db,
         long gamesCreated = 0, long gamesPlayed = 0, long commanderGamesPlayed = 0,
-        long regularGamesPlayed = 0, long playersJoined = 0, long cardsLoaded = 0)
+        long regularGamesPlayed = 0, long playersJoined = 0, long cardsLoaded = 0,
+        long randomCardsDrawn = 0)
     {
         await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO ""PublicStatistics""
-                (""Id"", ""GamesCreated"", ""GamesPlayed"", ""CommanderGamesPlayed"", ""RegularGamesPlayed"", ""PlayersJoined"", ""CardsLoaded"")
-            VALUES (1, {gamesCreated}, {gamesPlayed}, {commanderGamesPlayed}, {regularGamesPlayed}, {playersJoined}, {cardsLoaded})
+                (""Id"", ""GamesCreated"", ""GamesPlayed"", ""CommanderGamesPlayed"", ""RegularGamesPlayed"", ""PlayersJoined"", ""CardsLoaded"", ""RandomCardsDrawn"")
+            VALUES (1, {gamesCreated}, {gamesPlayed}, {commanderGamesPlayed}, {regularGamesPlayed}, {playersJoined}, {cardsLoaded}, {randomCardsDrawn})
             ON CONFLICT(""Id"") DO UPDATE SET
                 ""GamesCreated"" = ""GamesCreated"" + excluded.""GamesCreated"",
                 ""GamesPlayed"" = ""GamesPlayed"" + excluded.""GamesPlayed"",
                 ""CommanderGamesPlayed"" = ""CommanderGamesPlayed"" + excluded.""CommanderGamesPlayed"",
                 ""RegularGamesPlayed"" = ""RegularGamesPlayed"" + excluded.""RegularGamesPlayed"",
                 ""PlayersJoined"" = ""PlayersJoined"" + excluded.""PlayersJoined"",
-                ""CardsLoaded"" = ""CardsLoaded"" + excluded.""CardsLoaded""");
+                ""CardsLoaded"" = ""CardsLoaded"" + excluded.""CardsLoaded"",
+                ""RandomCardsDrawn"" = ""RandomCardsDrawn"" + excluded.""RandomCardsDrawn""");
     }
 
     private static string AdjustCounter(string json, string name, int delta)

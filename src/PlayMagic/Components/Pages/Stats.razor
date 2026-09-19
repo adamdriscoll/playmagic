@@ -40,6 +40,11 @@
             <strong>@stats.CardsLoaded.ToString("N0")</strong>
             <p>Total physical cards loaded into decks.</p>
         </article>
+        <article class="stat-card">
+            <div class="stat-label">RANDOM CARDS DRAWN</div>
+            <strong>@stats.RandomCardsDrawn.ToString("N0")</strong>
+            <p>Surprises drawn through Card Discovery.</p>
+        </article>
     </section>
 
     <section class="format-stats">
@@ -61,7 +66,7 @@
 </main>
 
 @code {
-    private PublicStats stats = new(0, 0, 0, 0, 0, 0);
+    private PublicStats stats = new(0, 0, 0, 0, 0, 0, 0);
     private int CommanderPercent => stats.GamesPlayed == 0 ? 0 : (int)Math.Round(100d * stats.CommanderGamesPlayed / stats.GamesPlayed);
     private int RegularPercent => stats.GamesPlayed == 0 ? 0 : (int)Math.Round(100d * stats.RegularGamesPlayed / stats.GamesPlayed);
 

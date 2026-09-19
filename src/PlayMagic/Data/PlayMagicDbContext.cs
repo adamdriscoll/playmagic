@@ -34,6 +34,7 @@ public sealed class PublicStatistics
     public long RegularGamesPlayed { get; set; }
     public long PlayersJoined { get; set; }
     public long CardsLoaded { get; set; }
+    public long RandomCardsDrawn { get; set; }
 }
 
 /// <summary>An English Oracle card and the Scryfall image URLs for its faces.</summary>

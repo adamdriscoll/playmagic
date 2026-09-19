@@ -36,14 +36,17 @@ public sealed class PublicStatsTests
         Assert.AreEqual(0, beforeSecondJoin.GamesPlayed);
         Assert.AreEqual(2, beforeSecondJoin.PlayersJoined);
         Assert.AreEqual(20, beforeSecondJoin.CardsLoaded);
+        Assert.AreEqual(0, beforeSecondJoin.RandomCardsDrawn);
 
         await games.JoinAsync(commanderId, "Three", "10 Island");
         await games.JoinAsync(commanderId, "Four", "10 Island");
         await games.JoinAsync(commanderId, "Five", "10 Island");
         await Assert.ThrowsExactlyAsync<GameActionException>(() =>
             games.JoinAsync(commanderId, "Six", "10 Island"));
+        await games.RecordRandomCardDrawAsync();
+        await games.RecordRandomCardDrawAsync();
 
-        var expected = new PublicStats(2, 1, 1, 0, 5, 50);
+        var expected = new PublicStats(2, 1, 1, 0, 5, 50, 2);
         Assert.AreEqual(expected, await games.GetPublicStatsAsync());
 
         await using (var db = await factory.CreateDbContextAsync())
@@ -87,7 +90,7 @@ public sealed class PublicStatsTests
         await using (var db = await factory.CreateDbContextAsync())
             await db.Database.MigrateAsync();
 
-        Assert.AreEqual(new PublicStats(3, 2, 1, 1, 5, 4),
+        Assert.AreEqual(new PublicStats(3, 2, 1, 1, 5, 4, 0),
             await provider.GetRequiredService<GameService>().GetPublicStatsAsync());
     }
 
