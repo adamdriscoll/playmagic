@@ -86,6 +86,7 @@
                         <button type="button" @onclick="CopySpectatorLink"><span>Copy spectator link</span><small>Read-only view with private hands hidden</small></button>
                         @if (!view.IsSpectator && MyPlayer is not null)
                         {
+                            <button type="button" disabled="@busy" @onclick="ExportGame"><span>Save game to file</span><small>Includes every player's private zones</small></button>
                             <button type="button" @onclick="CreateTransferCode"><span>Create transfer code</span><small>Move your seat to another device</small></button>
                             @if (generatedTransferCode is not null)
                             {
@@ -97,6 +98,34 @@
             </div>
         </div>
         @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
+        @if (restoredInvites is not null)
+        {
+            <section class="restored-invites" aria-labelledby="restored-invites-heading">
+                <button class="close-button" type="button" aria-label="Dismiss restored game invitations" @onclick="DismissRestoredInvites">×</button>
+                <div>
+                    <div class="eyebrow">GAME RESTORED</div>
+                    <h2 id="restored-invites-heading">New table, fresh invitations</h2>
+                    <p>This table has a new game code. Send each private, single-use link to the named player. Links remain valid until claimed or this game expires; dismiss this panel after sharing them.</p>
+                </div>
+                @if (restoredInvites.Count == 0)
+                {
+                    <p class="small-note">You were the only player in the saved game, so no additional invitations are needed.</p>
+                }
+                else
+                {
+                    <div class="restored-invite-list">
+                        @foreach (var invite in restoredInvites)
+                        {
+                            <div class="restored-invite-row">
+                                <strong>@invite.PlayerName</strong>
+                                <input aria-label="Restored seat invitation for @invite.PlayerName" readonly value="@RestoredInviteUrl(invite)" />
+                                <button class="outline-button" type="button" @onclick="() => CopyRestoredInvite(invite)">Copy</button>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        }
 
         <section class="table-tools @(view.IsSpectator ? "spectator-tools" : "")" aria-labelledby="table-tools-heading">
             <div class="table-tools-heading">
@@ -301,6 +330,7 @@
 @code {
     [Parameter] public string Id { get; set; } = "";
     [SupplyParameterFromQuery] public bool Spectate { get; set; }
+    [SupplyParameterFromQuery(Name = "claim")] public string? ClaimCode { get; set; }
     private GameInfo? info;
     private GameView? view;
     private CardView? selected;
@@ -312,6 +342,7 @@
     private string deckText = "";
     private string transferCode = "";
     private string? generatedTransferCode;
+    private List<RestoredSeatInvite>? restoredInvites;
     private List<SavedDeck> savedDecks = [];
     private string selectedSavedDeck = "";
     private bool saveDeck;
@@ -344,8 +375,22 @@
         if (!firstRender) return;
         token = await JS.InvokeAsync<string?>("playMagic.getToken", Id);
         savedDecks = await JS.InvokeAsync<List<SavedDeck>>("playMagic.getSavedDecks");
+        if (!Spectate && token is null && !string.IsNullOrWhiteSpace(ClaimCode))
+        {
+            var result = await JS.InvokeAsync<GameApiResponse>("playMagic.post",
+                $"/api/games/{Uri.EscapeDataString(Id)}/claim-seat", new { transferCode = ClaimCode });
+            if (result.Value is not null)
+            {
+                token = result.Value;
+                await JS.InvokeVoidAsync("playMagic.setToken", Id, token);
+                Navigation.NavigateTo($"/game/{Uri.EscapeDataString(Id)}", replace: true);
+            }
+            else error = result.Error ?? "Could not claim that restored seat.";
+        }
         if (Spectate) view = await Games.GetSpectatorViewAsync(Id);
         else if (token is not null) view = await Games.GetViewAsync(Id, token);
+        if (view is not null && !view.IsSpectator)
+            restoredInvites = await JS.InvokeAsync<List<RestoredSeatInvite>?>("playMagic.getRestoredInvites", Id);
         subscription = Notifier.Subscribe(Id, QueueRefresh);
         loading = false;
         StateHasChanged();
@@ -460,6 +505,40 @@
         {
             await ShowToast("Could not copy the link", isError: true);
         }
+    }
+
+    private async Task ExportGame()
+    {
+        if (token is null || !await JS.InvokeAsync<bool>("playMagic.confirm",
+                "The save file contains the full table, including every player's hidden hand and library. Download it anyway?"))
+            return;
+        busy = true;
+        error = "";
+        try
+        {
+            var archive = await Games.ExportAsync(Id, token);
+            var filename = $"playmagic-{Id}-{DateTime.UtcNow:yyyyMMdd-HHmm}.playmagic";
+            await JS.InvokeVoidAsync("playMagic.downloadText", filename, archive);
+            await ShowToast("Game save downloaded");
+        }
+        catch (GameActionException exception) { error = exception.Message; }
+        catch (JSException) { error = "Could not download the game save."; }
+        finally { busy = false; }
+    }
+
+    private string RestoredInviteUrl(RestoredSeatInvite invite) =>
+        $"{Navigation.BaseUri.TrimEnd('/')}/game/{Uri.EscapeDataString(Id)}?claim={Uri.EscapeDataString(invite.Code)}";
+
+    private Task CopyRestoredInvite(RestoredSeatInvite invite) =>
+        CopyToClipboard(RestoredInviteUrl(invite), $"Invite for {invite.PlayerName} copied");
+
+    private async Task DismissRestoredInvites()
+    {
+        if (restoredInvites is { Count: > 0 } && !await JS.InvokeAsync<bool>("playMagic.confirm",
+                "Dismiss these invitations? They cannot be recovered after they leave this browser."))
+            return;
+        await JS.InvokeVoidAsync("playMagic.removeRestoredInvites", Id);
+        restoredInvites = null;
     }
 
     private async Task ShowToast(string message, bool isError = false)

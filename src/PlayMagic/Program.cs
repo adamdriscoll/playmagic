@@ -101,6 +101,11 @@ app.MapPost("/api/games", async (CreateGameRequest request, GameService games) =
     try { return Results.Ok(new { value = await games.CreateAsync(request.Format) }); }
     catch (GameActionException exception) { return Results.BadRequest(new { message = exception.Message }); }
 }).RequireRateLimiting("create-game");
+app.MapPost("/api/games/import", async (ImportGameRequest request, GameService games) =>
+{
+    try { return Results.Ok(await games.ImportAsync(request.Archive)); }
+    catch (GameActionException exception) { return Results.BadRequest(new { message = exception.Message }); }
+}).RequireRateLimiting("create-game");
 app.MapPost("/api/games/{id}/join", async (string id, JoinGameRequest request, GameService games) =>
 {
     try

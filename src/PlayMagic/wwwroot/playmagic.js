@@ -27,8 +27,42 @@ window.playMagic = {
             ? { value: result.value, error: null }
             : { value: null, error: result.message || 'Please try again.' };
     },
+    async importGame(archive) {
+        const response = await fetch('/api/games/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archive })
+        });
+        const body = await response.json();
+        return response.ok
+            ? { result: body, error: null }
+            : { result: null, error: body.message || 'Please try again.' };
+    },
+    downloadText(filename, content) {
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
     getToken(gameId) { return localStorage.getItem(`playmagic:${gameId}`); },
     setToken(gameId, token) { localStorage.setItem(`playmagic:${gameId}`, token); },
+    setRestoredInvites(gameId, invites) {
+        localStorage.setItem(`playmagic:restored-invites:${gameId}`, JSON.stringify(invites));
+    },
+    getRestoredInvites(gameId) {
+        try {
+            const invites = JSON.parse(localStorage.getItem(`playmagic:restored-invites:${gameId}`) || 'null');
+            return Array.isArray(invites) ? invites : null;
+        } catch { return null; }
+    },
+    removeRestoredInvites(gameId) {
+        localStorage.removeItem(`playmagic:restored-invites:${gameId}`);
+    },
     getSavedDecks() {
         try {
             const decks = JSON.parse(localStorage.getItem('playmagic:saved-decks') || '[]');

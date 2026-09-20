@@ -11,6 +11,7 @@ Play Magic is a shared tabletop for playing Magic with friends online. Paste a d
 - Mulligan, mill, reveal or scry the top card, and place cards on the top or bottom of your library.
 - Commander tables include a command zone and per-opponent commander-damage tracking.
 - Watch without taking a seat using a spectator link, or move your seat to another device with a ten-minute transfer code.
+- Save a complete game locally and restore it later, even after the original table expires. Restores use a new game code and named, single-use seat invitations.
 - Explore the card library between games. Card data and images come from Scryfall.
 
 ### Home
@@ -31,6 +32,7 @@ Play Magic is a shared tabletop for playing Magic with friends online. Paste a d
 2. Share the eight-character code or game link with your friends. A table holds up to four players.
 3. Enter your name and paste a plain text deck list. You can copy one from [Moxfield](https://www.moxfield.com), [Archidekt](https://archidekt.com), or [MTGGoldfish](https://www.mtggoldfish.com). Use lines like `1 Sol Ring` or `1x Sol Ring`, with optional `(SET) 123` printing details. If you want to reuse the list, check **Save this deck in this browser for next time** before joining.
 4. Play as you would at a kitchen table. Click a card to see its details and available actions, or drag it between zones.
+5. To keep a table beyond its cleanup window, choose **Save game to file** from the table menu. Use **Restore a saved game** on the home page later, then send each named player their new private invitation link.
 
 Play Magic leaves rules enforcement and card abilities to the players while providing lightweight turn and zone tracking. Your seat and saved deck lists are kept in the browser where you joined; use a seat transfer code before clearing that browser's storage or moving devices. Saved decks are a convenience, limited to ten per browser, and can be removed from the join form. The community stats page in the app shows active tables alongside cumulative game, player, deck, and card discovery totals.
 
@@ -54,7 +56,7 @@ The default SQLite path is under the app's `Data` directory. Set `ConnectionStri
 dotnet test PlayMagic.slnx
 ```
 
-The tests cover four-seat limits, private hands, card ownership, text import sections, and public statistics.
+The tests cover four-seat limits, private hands, card ownership, game save/restore identity rotation, text import sections, and public statistics.
 
 Open the repository root in VS Code and select **PlayMagic (HTTPS)** in Run and Debug. F5 restores and builds the solution, starts the app, and opens its URL. **Terminal → Run Task** offers `restore`, `build`, `build: Release`, `test`, and `run`. The C# extension is recommended by the workspace. GitHub Actions restores, builds in Release mode, and runs the tests on pushes and pull requests.
 

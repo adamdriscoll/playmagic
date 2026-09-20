@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
 @using PlayMagic.Data
 @using PlayMagic.Services
 @inject CardCatalogService Catalog
@@ -33,6 +34,13 @@
                 </div>
                 <button class="primary-button" @onclick="CreateGame" disabled="@busy">Create game <span>↗</span></button>
                 <div class="join-line"><span>Have a code?</span><input aria-label="Game code" maxlength="8" placeholder="ENTER CODE" @bind="joinCode" @bind:event="oninput" /><button @onclick="JoinGame">Join →</button></div>
+                <div class="restore-game">
+                    <div><strong>Restore a saved game</strong><small>A new table and private seat invites will be created.</small></div>
+                    <label class="outline-button restore-file @(importing ? "disabled" : "")">
+                        @(importing ? "Restoring…" : "Choose save file")
+                        <InputFile OnChange="ImportGame" accept=".playmagic,.json,application/json" disabled="@importing" />
+                    </label>
+                </div>
                 @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
             </div>
         </div>
@@ -90,6 +98,7 @@
     private string error = "";
     private string catalogStatus = "";
     private bool busy;
+    private bool importing;
     private bool loadingCard;
     private string drawPhase = "";
     private int drawVersion;
@@ -150,6 +159,38 @@
         var code = joinCode.Trim().ToUpperInvariant();
         if (code.Length != 8) { error = "Enter an eight-character game code."; return; }
         Navigation.NavigateTo($"/game/{Uri.EscapeDataString(code)}");
+    }
+
+    private async Task ImportGame(InputFileChangeEventArgs args)
+    {
+        const long maxBytes = 5_000_000;
+        importing = true;
+        error = "";
+        try
+        {
+            if (args.File.Size > maxBytes)
+            {
+                error = "Choose a Play Magic save file smaller than 5 MB.";
+                return;
+            }
+            await using var stream = args.File.OpenReadStream(maxBytes);
+            using var reader = new StreamReader(stream);
+            var archive = await reader.ReadToEndAsync();
+            var response = await JS.InvokeAsync<ImportGameApiResponse>("playMagic.importGame", archive);
+            if (response.Result is null)
+            {
+                error = response.Error ?? "Could not restore that game. Please try again.";
+                return;
+            }
+            await JS.InvokeVoidAsync("playMagic.setToken", response.Result.GameId, response.Result.Token);
+            await JS.InvokeVoidAsync("playMagic.setRestoredInvites", response.Result.GameId, response.Result.Invites);
+            Navigation.NavigateTo($"/game/{Uri.EscapeDataString(response.Result.GameId)}");
+        }
+        catch (Exception exception) when (exception is IOException or JSException)
+        {
+            error = "Could not read or restore that game. Please try again.";
+        }
+        finally { importing = false; }
     }
 
     private async Task Search() => searchResults = await Catalog.SearchAsync(searchTerm);

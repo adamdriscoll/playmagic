@@ -87,6 +87,13 @@ public sealed class GameService(
         .Select(_ => new SemaphoreSlim(1, 1)).ToArray();
     private const string GameAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private const string TransferAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private const int GameArchiveVersion = 1;
+    private const int MaxArchiveCharacters = 5_000_000;
+    private static readonly JsonSerializerOptions ArchiveJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        MaxDepth = 16
+    };
     private static readonly TimeSpan EmptyGameLifetime = TimeSpan.FromHours(24);
     private static readonly TimeSpan InactiveGameLifetime = TimeSpan.FromDays(30);
 
@@ -110,6 +117,165 @@ public sealed class GameService(
             return id;
         }
         throw new GameActionException("Could not make a game code. Please try again.");
+    }
+
+    public async Task<string> ExportAsync(string gameId, string token)
+    {
+        var gate = GateFor(gameId);
+        await gate.WaitAsync();
+        try
+        {
+            await using var db = await contextFactory.CreateDbContextAsync();
+            var game = await db.Games.AsNoTracking().FirstOrDefaultAsync(item => item.Id == gameId)
+                ?? throw new GameActionException("This game could not be found.");
+            var players = (await db.Players.AsNoTracking().Where(item => item.GameId == gameId).ToListAsync())
+                .OrderBy(item => item.JoinedUtc).ToList();
+            var exportingPlayer = players.FirstOrDefault(player => player.TokenHash == HashToken(token))
+                ?? throw new GameActionException("Only a player seated at this table can save the game.");
+            var seats = players.Select((player, index) => new { player.Id, Seat = $"seat-{index + 1}" })
+                .ToDictionary(item => item.Id, item => item.Seat);
+            var playerIds = players.Select(player => player.Id).ToList();
+            var cards = await db.GameCards.AsNoTracking().Where(card => playerIds.Contains(card.PlayerId))
+                .OrderBy(card => card.SortOrder).ToListAsync();
+            var events = (await db.GameEvents.AsNoTracking().Where(item => item.GameId == gameId)
+                .OrderByDescending(item => item.Id).Take(100).ToListAsync())
+                .OrderBy(item => item.Id).ToList();
+
+            var archive = new GameArchive(
+                GameArchiveVersion,
+                game.Format,
+                DateTimeOffset.UtcNow,
+                seats[exportingPlayer.Id],
+                game.ActivePlayerId is not null && seats.TryGetValue(game.ActivePlayerId, out var activeSeat)
+                    ? activeSeat : null,
+                game.TurnNumber,
+                players.Select(player => new ArchivedPlayer(
+                    seats[player.Id],
+                    player.Name,
+                    player.DeckName,
+                    player.Life,
+                    DeserializeCounters(player.CountersJson),
+                    DeserializeCounters(player.CommanderDamageJson)
+                        .Where(item => seats.ContainsKey(item.Key))
+                        .ToDictionary(item => seats[item.Key], item => item.Value),
+                    cards.Where(card => card.PlayerId == player.Id)
+                        .Select(card => new ArchivedCard(card.Name, card.ImageUrl, card.BackImageUrl,
+                            card.TypeLine, card.OracleText, card.Zone, card.SortOrder, card.Tapped,
+                            DeserializeCounters(card.CountersJson)))
+                        .ToList()))
+                    .ToList(),
+                events.Select(item => new ArchivedGameEvent(
+                    item.PlayerId is not null && seats.TryGetValue(item.PlayerId, out var eventSeat)
+                        ? eventSeat : null,
+                    item.PlayerName, item.Kind, item.Message, item.CreatedUtc))
+                    .ToList());
+
+            return JsonSerializer.Serialize(archive, ArchiveJsonOptions);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task<GameImportResult> ImportAsync(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json.Length > MaxArchiveCharacters)
+            throw new GameActionException("Choose a Play Magic save file smaller than 5 MB.");
+
+        GameArchive archive;
+        try
+        {
+            archive = JsonSerializer.Deserialize<GameArchive>(json, ArchiveJsonOptions)
+                ?? throw new JsonException();
+        }
+        catch (JsonException)
+        {
+            throw new GameActionException("That file is not a valid Play Magic game save.");
+        }
+        ValidateArchive(archive);
+
+        await using var db = await contextFactory.CreateDbContextAsync();
+        var gameId = await CreateUniqueGameIdAsync(db);
+        var now = DateTimeOffset.UtcNow;
+        var game = new Game
+        {
+            Id = gameId,
+            Format = archive.Format,
+            CreatedUtc = now,
+            LastActivityUtc = now.UtcDateTime,
+            TurnNumber = archive.TurnNumber
+        };
+        db.Games.Add(game);
+
+        var playersBySeat = new Dictionary<string, Player>(StringComparer.Ordinal);
+        var invitations = new List<RestoredSeatInvite>();
+        var inviteCodes = new HashSet<string>(StringComparer.Ordinal);
+        string? importerToken = null;
+        for (var index = 0; index < archive.Players.Count; index++)
+        {
+            var saved = archive.Players[index];
+            var seatToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            var player = new Player
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                GameId = gameId,
+                Name = saved.Name,
+                DeckName = saved.DeckName,
+                Life = saved.Life,
+                CountersJson = JsonSerializer.Serialize(saved.Counters),
+                TokenHash = HashToken(seatToken),
+                JoinedUtc = now.AddTicks(index)
+            };
+            if (saved.Seat == archive.ExportedBySeat)
+            {
+                importerToken = seatToken;
+            }
+            else
+            {
+                string inviteCode;
+                do { inviteCode = CreateTransferCode(); } while (!inviteCodes.Add(inviteCode));
+                player.TransferTokenHash = HashToken(inviteCode);
+                player.TransferExpiresUtc = null;
+                invitations.Add(new RestoredSeatInvite(player.Name, inviteCode));
+            }
+            playersBySeat.Add(saved.Seat, player);
+            db.Players.Add(player);
+        }
+
+        foreach (var saved in archive.Players)
+        {
+            var player = playersBySeat[saved.Seat];
+            player.CommanderDamageJson = JsonSerializer.Serialize(saved.CommanderDamage
+                .ToDictionary(item => playersBySeat[item.Key].Id, item => item.Value));
+            db.GameCards.AddRange(saved.Cards.Select(card => new GameCard
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                PlayerId = player.Id,
+                Name = card.Name,
+                ImageUrl = card.ImageUrl,
+                BackImageUrl = card.BackImageUrl,
+                TypeLine = card.TypeLine,
+                OracleText = card.OracleText,
+                Zone = card.Zone,
+                SortOrder = card.SortOrder,
+                Tapped = card.Tapped,
+                CountersJson = JsonSerializer.Serialize(card.Counters)
+            }));
+        }
+        game.ActivePlayerId = archive.ActiveSeat is null ? null : playersBySeat[archive.ActiveSeat].Id;
+        db.GameEvents.AddRange(archive.Events.Select(item => new GameEvent
+        {
+            GameId = gameId,
+            PlayerId = item.Seat is null ? null : playersBySeat[item.Seat].Id,
+            PlayerName = item.PlayerName,
+            Kind = item.Kind,
+            Message = item.Message,
+            CreatedUtc = item.CreatedUtc
+        }));
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.SaveChangesAsync();
+        await IncrementStatisticsAsync(db, gamesCreated: 1);
+        await transaction.CommitAsync();
+        return new GameImportResult(gameId, importerToken!, invitations);
     }
 
     public async Task<PublicStats> GetPublicStatsAsync()
@@ -484,8 +650,7 @@ public sealed class GameService(
 
     public async Task<string> CreateSeatTransferAsync(string gameId, string token)
     {
-        var code = new string(Enumerable.Range(0, 10)
-            .Select(_ => TransferAlphabet[RandomNumberGenerator.GetInt32(TransferAlphabet.Length)]).ToArray());
+        var code = CreateTransferCode();
         await MutateAsync(gameId, token, (db, player) =>
         {
             player.TransferTokenHash = HashToken(code);
@@ -508,7 +673,7 @@ public sealed class GameService(
             var hash = HashToken(code);
             var now = DateTimeOffset.UtcNow;
             var player = await db.Players.FirstOrDefaultAsync(item => item.GameId == gameId && item.TransferTokenHash == hash);
-            if (player is null || player.TransferExpiresUtc < now)
+            if (player is null || player.TransferExpiresUtc is { } expires && expires < now)
                 throw new GameActionException("That transfer code is invalid or expired.");
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             player.TokenHash = HashToken(token);
@@ -589,6 +754,92 @@ public sealed class GameService(
                 ""PlayersJoined"" = ""PlayersJoined"" + excluded.""PlayersJoined"",
                 ""CardsLoaded"" = ""CardsLoaded"" + excluded.""CardsLoaded"",
                 ""RandomCardsDrawn"" = ""RandomCardsDrawn"" + excluded.""RandomCardsDrawn""");
+    }
+
+    private static async Task<string> CreateUniqueGameIdAsync(PlayMagicDbContext db)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var id = new string(Enumerable.Range(0, 8)
+                .Select(_ => GameAlphabet[RandomNumberGenerator.GetInt32(GameAlphabet.Length)]).ToArray());
+            if (!await db.Games.AnyAsync(game => game.Id == id)) return id;
+        }
+        throw new GameActionException("Could not make a game code. Please try again.");
+    }
+
+    private static string CreateTransferCode() => new(Enumerable.Range(0, 10)
+        .Select(_ => TransferAlphabet[RandomNumberGenerator.GetInt32(TransferAlphabet.Length)]).ToArray());
+
+    private static void ValidateArchive(GameArchive archive)
+    {
+        if (archive.Version != GameArchiveVersion)
+            throw new GameActionException("This Play Magic save version is not supported.");
+        if (archive.Format is not ("Commander" or "Regular"))
+            throw new GameActionException("The saved game has an invalid format.");
+        if (archive.TurnNumber is < 1 or > 1_000_000)
+            throw new GameActionException("The saved game has an invalid turn number.");
+        if (archive.Players is null || archive.Players.Count is < 1 or > 4)
+            throw new GameActionException("A saved game must contain between one and four players.");
+        if (archive.Events is null || archive.Events.Count > 100)
+            throw new GameActionException("The saved game contains too much activity history.");
+
+        var seats = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var player in archive.Players)
+        {
+            if (player is null || string.IsNullOrWhiteSpace(player.Seat) || player.Seat.Length > 32 || !seats.Add(player.Seat))
+                throw new GameActionException("The saved game contains an invalid seat.");
+            if (string.IsNullOrWhiteSpace(player.Name) || player.Name.Length > 24 ||
+                player.DeckName is null || player.DeckName.Length > 80)
+                throw new GameActionException("The saved game contains an invalid player name or deck name.");
+            if (player.Life is < -999 or > 999)
+                throw new GameActionException("The saved game contains an invalid life total.");
+            ValidateCounters(player.Counters, "player");
+            if (player.CommanderDamage is null || player.CommanderDamage.Count > 4 ||
+                player.CommanderDamage.Any(item => item.Value is < 1 or > 999))
+                throw new GameActionException("The saved game contains invalid commander damage.");
+            if (player.Cards is null || player.Cards.Count > 250)
+                throw new GameActionException("A saved player can contain at most 250 cards.");
+            foreach (var card in player.Cards)
+            {
+                if (card is null || string.IsNullOrWhiteSpace(card.Name) || card.Name.Length > 300 ||
+                    card.TypeLine is null || card.TypeLine.Length > 500 ||
+                    card.OracleText is null || card.OracleText.Length > 10_000 ||
+                    card.Zone is null ||
+                    !CardZones.IsValid(card.Zone) || card.SortOrder is < -1_000_000 or > 1_000_000 ||
+                    !IsSafeCardImageUrl(card.ImageUrl) || !IsSafeCardImageUrl(card.BackImageUrl))
+                    throw new GameActionException("The saved game contains invalid card data.");
+                ValidateCounters(card.Counters, "card");
+            }
+        }
+        if (!seats.Contains(archive.ExportedBySeat) ||
+            archive.ActiveSeat is not null && !seats.Contains(archive.ActiveSeat))
+            throw new GameActionException("The saved game refers to a seat that does not exist.");
+        foreach (var player in archive.Players)
+            if (player.CommanderDamage.Keys.Any(seat => !seats.Contains(seat)))
+                throw new GameActionException("The saved game contains invalid commander damage.");
+        foreach (var item in archive.Events)
+        {
+            if (item is null || item.Seat is not null && !seats.Contains(item.Seat) ||
+                item.PlayerName is null || item.PlayerName.Length > 24 ||
+                string.IsNullOrWhiteSpace(item.Kind) || item.Kind.Length > 32 ||
+                string.IsNullOrWhiteSpace(item.Message) || item.Message.Length > 500)
+                throw new GameActionException("The saved game contains invalid activity history.");
+        }
+    }
+
+    private static void ValidateCounters(Dictionary<string, int>? counters, string subject)
+    {
+        if (counters is null || counters.Count > 50 || counters.Any(item =>
+                string.IsNullOrWhiteSpace(item.Key) || item.Key.Length > 24 || item.Value is < 1 or > 999))
+            throw new GameActionException($"The saved game contains invalid {subject} counters.");
+    }
+
+    private static bool IsSafeCardImageUrl(string? value)
+    {
+        if (value is null) return true;
+        return value.Length <= 2_048 && Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps &&
+            (uri.Host.Equals("scryfall.io", StringComparison.OrdinalIgnoreCase) ||
+             uri.Host.EndsWith(".scryfall.io", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string AdjustCounter(string json, string name, int delta)

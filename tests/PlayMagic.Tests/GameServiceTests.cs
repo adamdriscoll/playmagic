@@ -154,6 +154,97 @@ public sealed class GameServiceTests
     }
 
     [TestMethod]
+    public async Task ExportedGameCanBeRestoredAfterOriginalExpiresWithFreshIdsAndNamedInvites()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        using var provider = CreateServices(connection);
+        var factory = provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.Cards.Add(new CatalogCard { Id = "island", OracleId = "island", Name = "Island" });
+            db.CatalogSyncs.Add(new CatalogSync { Id = 1, CardCount = 1, LastUpdatedUtc = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var games = provider.GetRequiredService<GameService>();
+        var originalGameId = await games.CreateAsync("Commander");
+        var firstToken = await games.JoinAsync(originalGameId, "Alice", "10 Island", "Blue one");
+        var secondToken = await games.JoinAsync(originalGameId, "Bob", "10 Island", "Blue two");
+        var before = (await games.GetViewAsync(originalGameId, firstToken))!;
+        var alice = before.Players.Single(player => player.Name == "Alice");
+        var bob = before.Players.Single(player => player.Name == "Bob");
+        var handCard = alice.Cards.First(card => card.Zone == CardZones.Hand);
+        await games.MoveCardAsync(originalGameId, firstToken, handCard.Id, CardZones.Battlefield);
+        await games.AdjustCardCounterAsync(originalGameId, firstToken, handCard.Id, "+1/+1", 1);
+        await games.AdjustLifeAsync(originalGameId, firstToken, -3);
+        await games.AdjustCommanderDamageAsync(originalGameId, firstToken, bob.Id, 1);
+        await games.AdjustCommanderDamageAsync(originalGameId, firstToken, bob.Id, 1);
+        await games.AdvanceTurnAsync(originalGameId, firstToken);
+        before = (await games.GetViewAsync(originalGameId, firstToken))!;
+        var originalPlayerIds = before.Players.Select(player => player.Id).ToHashSet();
+        var originalCardIds = before.Players.SelectMany(player => player.Cards).Select(card => card.Id).ToHashSet();
+
+        var archive = await games.ExportAsync(originalGameId, firstToken);
+
+        Assert.DoesNotContain(originalGameId, archive);
+        Assert.DoesNotContain(firstToken, archive);
+        Assert.DoesNotContain(secondToken, archive);
+        Assert.IsFalse(originalPlayerIds.Any(archive.Contains));
+        Assert.IsFalse(originalCardIds.Any(archive.Contains));
+
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            await db.Games.Where(game => game.Id == originalGameId).ExecuteDeleteAsync();
+        }
+        Assert.IsNull(await games.GetViewAsync(originalGameId, firstToken));
+
+        var restored = await games.ImportAsync(archive);
+        Assert.AreNotEqual(originalGameId, restored.GameId);
+        Assert.HasCount(1, restored.Invites);
+        Assert.AreEqual("Bob", restored.Invites[0].PlayerName);
+        Assert.IsNull(await games.GetViewAsync(restored.GameId, firstToken));
+        Assert.IsNull(await games.GetViewAsync(restored.GameId, secondToken));
+
+        var restoredAliceView = (await games.GetViewAsync(restored.GameId, restored.Token))!;
+        var restoredAlice = restoredAliceView.Players.Single(player => player.Name == "Alice");
+        var restoredBob = restoredAliceView.Players.Single(player => player.Name == "Bob");
+        Assert.AreEqual(37, restoredAlice.Life);
+        Assert.AreEqual(2, restoredAlice.CommanderDamage[restoredBob.Id]);
+        Assert.AreEqual(restoredBob.Id, restoredAliceView.ActivePlayerId);
+        Assert.AreEqual(2, restoredAliceView.TurnNumber);
+        Assert.IsFalse(restoredAliceView.Players.Any(player => originalPlayerIds.Contains(player.Id)));
+        var restoredPermanent = restoredAlice.Cards.Single(card => card.Zone == CardZones.Battlefield);
+        Assert.AreEqual(1, restoredPermanent.Counters["+1/+1"]);
+        Assert.DoesNotContain(restoredPermanent.Id, originalCardIds);
+
+        var bobToken = await games.ClaimSeatTransferAsync(restored.GameId, restored.Invites[0].Code);
+        var restoredBobView = await games.GetViewAsync(restored.GameId, bobToken);
+        Assert.IsNotNull(restoredBobView);
+        Assert.AreEqual(restoredBob.Id, restoredBobView.MyPlayerId);
+        await Assert.ThrowsExactlyAsync<GameActionException>(() =>
+            games.ClaimSeatTransferAsync(restored.GameId, restored.Invites[0].Code));
+    }
+
+    [TestMethod]
+    public async Task ImportRejectsMalformedAndUnsupportedSaveFiles()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        using var provider = CreateServices(connection);
+        var factory = provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync()) await db.Database.EnsureCreatedAsync();
+        var games = provider.GetRequiredService<GameService>();
+
+        await Assert.ThrowsExactlyAsync<GameActionException>(() => games.ImportAsync("not json"));
+        await Assert.ThrowsExactlyAsync<GameActionException>(() => games.ImportAsync(
+            "{\"version\":99,\"format\":\"Commander\",\"exportedUtc\":\"2026-01-01T00:00:00Z\",\"exportedBySeat\":\"seat-1\",\"turnNumber\":1,\"players\":[],\"events\":[]}"));
+        await Assert.ThrowsExactlyAsync<GameActionException>(() => games.ImportAsync(
+            "{\"version\":1,\"format\":\"Commander\",\"exportedUtc\":\"2026-01-01T00:00:00Z\",\"exportedBySeat\":\"seat-1\",\"turnNumber\":1,\"players\":[null],\"events\":[]}"));
+    }
+
+    [TestMethod]
     public void TextImportOmitsSideboardAndMergesCopies()
     {
         var deck = DeckImportService.ParseText("// MAINBOARD\n2 Island\n1x Island\n// SIDEBOARD\n3 Lightning Bolt\n// COMMANDER\n1 Sol Ring");
