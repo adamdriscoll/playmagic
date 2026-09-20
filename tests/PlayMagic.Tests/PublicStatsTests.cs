@@ -70,22 +70,23 @@ public sealed class PublicStatsTests
         await using (var db = await factory.CreateDbContextAsync())
         {
             await db.Database.MigrateAsync("20260917233555_GameActivity");
-            db.Games.AddRange(
-                new Game { Id = "COMMAND1", Format = "Commander" },
-                new Game { Id = "REGULAR1", Format = "Regular" },
-                new Game { Id = "REGULAR2", Format = "Regular" });
-            db.Players.AddRange(
-                new Player { Id = "p1", GameId = "COMMAND1", TokenHash = "t1" },
-                new Player { Id = "p2", GameId = "COMMAND1", TokenHash = "t2" },
-                new Player { Id = "p3", GameId = "REGULAR1", TokenHash = "t3" },
-                new Player { Id = "p4", GameId = "REGULAR2", TokenHash = "t4" },
-                new Player { Id = "p5", GameId = "REGULAR2", TokenHash = "t5" });
-            db.GameCards.AddRange(
-                new GameCard { Id = "c1", PlayerId = "p1" },
-                new GameCard { Id = "c2", PlayerId = "p2" },
-                new GameCard { Id = "c3", PlayerId = "p3" },
-                new GameCard { Id = "c4", PlayerId = "p4" });
-            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO Games (Id, Format, CreatedUtc, LastActivityUtc) VALUES
+                    ('COMMAND1', 'Commander', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                    ('REGULAR1', 'Regular', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                    ('REGULAR2', 'Regular', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT INTO Players (Id, GameId, Name, TokenHash, DeckName, Life, CountersJson, JoinedUtc) VALUES
+                    ('p1', 'COMMAND1', '', 't1', '', 0, '{{}}', CURRENT_TIMESTAMP),
+                    ('p2', 'COMMAND1', '', 't2', '', 0, '{{}}', CURRENT_TIMESTAMP),
+                    ('p3', 'REGULAR1', '', 't3', '', 0, '{{}}', CURRENT_TIMESTAMP),
+                    ('p4', 'REGULAR2', '', 't4', '', 0, '{{}}', CURRENT_TIMESTAMP),
+                    ('p5', 'REGULAR2', '', 't5', '', 0, '{{}}', CURRENT_TIMESTAMP);
+                INSERT INTO GameCards (Id, PlayerId, Name, TypeLine, OracleText, Zone, SortOrder, Tapped, CountersJson) VALUES
+                    ('c1', 'p1', '', '', '', 'Library', 0, 0, '{{}}'),
+                    ('c2', 'p2', '', '', '', 'Library', 0, 0, '{{}}'),
+                    ('c3', 'p3', '', '', '', 'Library', 0, 0, '{{}}'),
+                    ('c4', 'p4', '', '', '', 'Library', 0, 0, '{{}}');
+                """);
         }
 
         await using (var db = await factory.CreateDbContextAsync())

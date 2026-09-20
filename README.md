@@ -7,6 +7,10 @@ Play Magic is a shared tabletop for playing Magic with friends online. Paste a d
 - Paste a plain text deck list from a deck builder and optionally save it in your browser for another game.
 - Start with a shuffled deck and seven cards in your private hand. Other players see your hand count, not your cards.
 - Move cards among your hand, battlefield, graveyard, exile, and library. Tap cards, add counters, draw, shuffle, and track life and player counters.
+- Roll a shared d20 or flip a coin, follow the active turn, and review recent table activity.
+- Mulligan, mill, reveal or scry the top card, and place cards on the top or bottom of your library.
+- Commander tables include a command zone and per-opponent commander-damage tracking.
+- Watch without taking a seat using a spectator link, or move your seat to another device with a ten-minute transfer code.
 - Explore the card library between games. Card data and images come from Scryfall.
 
 ### Home
@@ -28,7 +32,7 @@ Play Magic is a shared tabletop for playing Magic with friends online. Paste a d
 3. Enter your name and paste a plain text deck list. You can copy one from [Moxfield](https://www.moxfield.com), [Archidekt](https://archidekt.com), or [MTGGoldfish](https://www.mtggoldfish.com). Use lines like `1 Sol Ring` or `1x Sol Ring`, with optional `(SET) 123` printing details. If you want to reuse the list, check **Save this deck in this browser for next time** before joining.
 4. Play as you would at a kitchen table. Click a card to see its details and available actions, or drag it between zones.
 
-Play Magic leaves rules, turn order, commander zones, and card abilities to the players. Your seat and saved deck lists are kept in the browser where you joined; clearing that browser's storage removes them. Saved decks are a convenience, limited to ten per browser, and can be removed from the join form. The community stats page in the app shows active tables alongside cumulative game, player, deck, and card discovery totals.
+Play Magic leaves rules enforcement and card abilities to the players while providing lightweight turn and zone tracking. Your seat and saved deck lists are kept in the browser where you joined; use a seat transfer code before clearing that browser's storage or moving devices. Saved decks are a convenience, limited to ten per browser, and can be removed from the join form. The community stats page in the app shows active tables alongside cumulative game, player, deck, and card discovery totals.
 
 ## Contributors
 

@@ -49,6 +49,13 @@ builder.Services.AddRateLimiter(options =>
             PermitLimit = 10, Window = TimeSpan.FromMinutes(10), QueueLimit = 0,
             AutoReplenishment = true
         }));
+    options.AddPolicy("claim-seat", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10, Window = TimeSpan.FromMinutes(10), QueueLimit = 0,
+            AutoReplenishment = true
+        }));
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
@@ -108,5 +115,14 @@ app.MapPost("/api/games/{id}/join", async (string id, JoinGameRequest request, G
     }
     catch (GameActionException exception) { return Results.BadRequest(new { message = exception.Message }); }
 }).RequireRateLimiting("join-game");
+app.MapPost("/api/games/{id}/claim-seat", async (string id, ClaimSeatRequest request, GameService games) =>
+{
+    try
+    {
+        var token = await games.ClaimSeatTransferAsync(id.ToUpperInvariant(), request.TransferCode ?? "");
+        return Results.Ok(new { value = token });
+    }
+    catch (GameActionException exception) { return Results.BadRequest(new { message = exception.Message }); }
+}).RequireRateLimiting("claim-seat");
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.Run();

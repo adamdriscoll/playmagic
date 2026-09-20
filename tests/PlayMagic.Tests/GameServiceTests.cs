@@ -58,6 +58,102 @@ public sealed class GameServiceTests
     }
 
     [TestMethod]
+    public async Task TabletopFeaturesAreSharedWhileSpectatorsCannotSeeHands()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        using var provider = CreateServices(connection);
+        var factory = provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.Cards.Add(new CatalogCard { Id = "island", OracleId = "island", Name = "Island" });
+            db.CatalogSyncs.Add(new CatalogSync { Id = 1, CardCount = 1, LastUpdatedUtc = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var games = provider.GetRequiredService<GameService>();
+        var gameId = await games.CreateAsync("Commander");
+        var firstToken = await games.JoinAsync(gameId, "One", "10 Island");
+        var secondToken = await games.JoinAsync(gameId, "Two", "10 Island");
+        var first = (await games.GetViewAsync(gameId, firstToken))!;
+        var second = (await games.GetViewAsync(gameId, secondToken))!;
+
+        Assert.AreEqual(first.MyPlayerId, first.ActivePlayerId);
+        var spectator = (await games.GetSpectatorViewAsync(gameId))!;
+        Assert.IsTrue(spectator.IsSpectator);
+        Assert.IsNull(spectator.MyPlayerId);
+        Assert.IsFalse(spectator.Players.SelectMany(player => player.Cards).Any(card => card.Zone == CardZones.Hand));
+
+        var roll = await games.RollDieAsync(gameId, firstToken, 20);
+        Assert.IsTrue(roll is >= 1 and <= 20);
+        await games.FlipCoinAsync(gameId, firstToken);
+        spectator = (await games.GetSpectatorViewAsync(gameId))!;
+        Assert.IsTrue(spectator.Events.Any(item => item.Kind == "Roll" && item.Message.Contains(roll.ToString())));
+        Assert.IsTrue(spectator.Events.Any(item => item.Kind == "Coin"));
+
+        var originalTop = await games.ScryAsync(gameId, firstToken);
+        Assert.IsNotNull(originalTop);
+        await games.MoveCardAsync(gameId, firstToken, originalTop.Id, CardZones.Library, LibraryPlacement.Bottom);
+        Assert.AreNotEqual(originalTop.Id, (await games.ScryAsync(gameId, firstToken))!.Id);
+        await games.RevealTopAsync(gameId, firstToken);
+        await games.MillAsync(gameId, firstToken);
+        first = (await games.GetViewAsync(gameId, firstToken))!;
+        Assert.AreEqual(2, first.Players.Single(player => player.Id == first.MyPlayerId).LibraryCount);
+        Assert.IsTrue(first.Events.Any(item => item.Kind == "Reveal"));
+        Assert.IsTrue(first.Events.Any(item => item.Kind == "Mill"));
+
+        var handCard = first.Players.Single(player => player.Id == first.MyPlayerId).Cards
+            .First(card => card.Zone == CardZones.Hand);
+        await games.MoveCardAsync(gameId, firstToken, handCard.Id, CardZones.Commander);
+        first = (await games.GetViewAsync(gameId, firstToken))!;
+        Assert.IsTrue(first.Players.Single(player => player.Id == first.MyPlayerId).Cards
+            .Any(card => card.Id == handCard.Id && card.Zone == CardZones.Commander));
+
+        await games.AdjustCommanderDamageAsync(gameId, secondToken, first.MyPlayerId!, 1);
+        second = (await games.GetViewAsync(gameId, secondToken))!;
+        Assert.AreEqual(1, second.Players.Single(player => player.Id == second.MyPlayerId)
+            .CommanderDamage[first.MyPlayerId!]);
+
+        await games.AdvanceTurnAsync(gameId, firstToken);
+        first = (await games.GetViewAsync(gameId, firstToken))!;
+        Assert.AreEqual(second.MyPlayerId, first.ActivePlayerId);
+        Assert.AreEqual(2, first.TurnNumber);
+
+        await games.MulliganAsync(gameId, firstToken);
+        first = (await games.GetViewAsync(gameId, firstToken))!;
+        Assert.AreEqual(7, first.Players.Single(player => player.Id == first.MyPlayerId).HandCount);
+        Assert.IsTrue(first.Events.Any(item => item.Kind == "Mulligan"));
+    }
+
+    [TestMethod]
+    public async Task SeatTransferIsSingleUseAndRotatesTheSeatToken()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        using var provider = CreateServices(connection);
+        var factory = provider.GetRequiredService<IDbContextFactory<PlayMagicDbContext>>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.Cards.Add(new CatalogCard { Id = "island", OracleId = "island", Name = "Island" });
+            db.CatalogSyncs.Add(new CatalogSync { Id = 1, CardCount = 1, LastUpdatedUtc = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        var games = provider.GetRequiredService<GameService>();
+        var gameId = await games.CreateAsync("Regular");
+        var originalToken = await games.JoinAsync(gameId, "Traveler", "10 Island");
+        var transferCode = await games.CreateSeatTransferAsync(gameId, originalToken);
+
+        var replacementToken = await games.ClaimSeatTransferAsync(gameId, transferCode);
+
+        Assert.IsNull(await games.GetViewAsync(gameId, originalToken));
+        Assert.IsNotNull(await games.GetViewAsync(gameId, replacementToken));
+        await Assert.ThrowsExactlyAsync<GameActionException>(() => games.ClaimSeatTransferAsync(gameId, transferCode));
+    }
+
+    [TestMethod]
     public void TextImportOmitsSideboardAndMergesCopies()
     {
         var deck = DeckImportService.ParseText("// MAINBOARD\n2 Island\n1x Island\n// SIDEBOARD\n3 Lightning Bolt\n// COMMANDER\n1 Sol Ring");
@@ -240,5 +336,17 @@ public sealed class GameServiceTests
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
         }
+    }
+
+    private static ServiceProvider CreateServices(SqliteConnection connection)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddHttpClient();
+        services.AddDbContextFactory<PlayMagicDbContext>(options => options.UseSqlite(connection));
+        services.AddSingleton<CardCatalogService>();
+        services.AddSingleton<GameNotifier>();
+        services.AddSingleton<GameService>();
+        return services.BuildServiceProvider();
     }
 }

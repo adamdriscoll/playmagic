@@ -50,7 +50,11 @@ window.playMagic = {
         catch { return this.getSavedDecks(); }
         return decks;
     },
-    copyLink(url) { return navigator.clipboard.writeText(url); },
+    async copyLink(url, detailsId) {
+        await navigator.clipboard.writeText(url);
+        if (detailsId) document.getElementById(detailsId)?.removeAttribute('open');
+    },
+    confirm(message) { return window.confirm(message); },
     draggedCardId: null,
     getDraggedCardId() { return this.draggedCardId; },
     clearDraggedCardId() { this.draggedCardId = null; }

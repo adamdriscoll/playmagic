@@ -33,6 +33,10 @@
                 <h1>Game <em>@Id</em></h1>
                 <p>@info.Format · @info.PlayerCount of 4 seats taken</p>
                 <button class="outline-button" @onclick="CopyLink">Copy invite link ↗</button>
+                @if (info.PlayerCount > 0)
+                {
+                    <button class="outline-button" @onclick="WatchGame">Watch as spectator</button>
+                }
                 <p class="small-note">Share the code or the page link with your friends.</p>
             </div>
             <div class="join-form">
@@ -58,6 +62,13 @@
                 <label class="save-deck-choice"><input type="checkbox" @bind="saveDeck" /> Save this deck in this browser for next time</label>
                 @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
                 <button class="primary-button" disabled="@busy" @onclick="Join">@(busy ? "Importing deck…" : "Join game →")</button>
+                <div class="transfer-claim">
+                    <label for="transfer-code">Already have a seat transfer code?</label>
+                    <div class="saved-deck-row">
+                        <input id="transfer-code" maxlength="10" placeholder="TRANSFER CODE" @bind="transferCode" @bind:event="oninput" />
+                        <button class="outline-button" type="button" disabled="@busy" @onclick="ClaimSeat">Claim seat</button>
+                    </div>
+                </div>
                 <p class="small-note">Your seat stays in this browser. Your hand is visible only to you.</p>
             </div>
         </section>
@@ -66,17 +77,97 @@
     {
         <div class="game-toolbar">
             <div><div class="eyebrow">@view.Format GAME</div><h1>Table <span>@Id</span></h1></div>
-            <div class="toolbar-actions"><span>@view.Players.Count / 4 players</span><button class="outline-button" @onclick="CopyLink">Copy invite link ↗</button></div>
+            <div class="toolbar-actions">
+                <span>@(view.IsSpectator ? "Spectating" : $"{view.Players.Count} / 4 players")</span>
+                <details id="table-options-menu" class="table-menu">
+                    <summary aria-label="Open table options" title="Table options"><span aria-hidden="true">•••</span></summary>
+                    <div class="table-menu-list">
+                        <button type="button" @onclick="CopyLink"><span>Copy invite link</span><small>For players joining the table</small></button>
+                        <button type="button" @onclick="CopySpectatorLink"><span>Copy spectator link</span><small>Read-only view with private hands hidden</small></button>
+                        @if (!view.IsSpectator && MyPlayer is not null)
+                        {
+                            <button type="button" @onclick="CreateTransferCode"><span>Create transfer code</span><small>Move your seat to another device</small></button>
+                            @if (generatedTransferCode is not null)
+                            {
+                                <div class="transfer-menu-result"><small>Expires in ten minutes</small><strong>@generatedTransferCode</strong></div>
+                            }
+                        }
+                    </div>
+                </details>
+            </div>
         </div>
         @if (!string.IsNullOrWhiteSpace(error)) { <p class="message error">@error</p> }
+
+        <section class="table-tools @(view.IsSpectator ? "spectator-tools" : "")" aria-labelledby="table-tools-heading">
+            <div class="table-tools-heading">
+                <div class="eyebrow">TABLE TOOLS</div>
+                <h2 id="table-tools-heading">Keep play moving</h2>
+                <p>Turn order and shared chance.</p>
+            </div>
+            <div class="turn-tool">
+                <div><span>TURN @view.TurnNumber</span><strong>@(view.Players.FirstOrDefault(player => player.Id == view.ActivePlayerId)?.Name ?? "No active player")</strong></div>
+                @if (!view.IsSpectator)
+                {
+                    <div class="turn-actions">
+                        <button @onclick="AdvanceTurn">Next turn</button>
+                        @if (MyPlayer is not null && view.ActivePlayerId != view.MyPlayerId)
+                        {
+                            <button @onclick="() => TakeTurn(MyPlayer.Id)">Take turn</button>
+                        }
+                    </div>
+                }
+            </div>
+            @if (!view.IsSpectator)
+            {
+            <div class="randomizer-tools">
+                <div class="randomizer-tool">
+                    <div class="randomizer-stage" aria-hidden="true">
+                        @if (d20Result is null)
+                        {
+                            <div class="d20-shape idle"><span>20</span></div>
+                        }
+                        else
+                        {
+                            <div @key="d20Sequence" class="d20-shape rolling"><span>@d20Result</span></div>
+                        }
+                    </div>
+                    <div class="randomizer-copy">
+                        <span>D20</span>
+                        <strong role="status" aria-live="polite">@(d20Result is null ? "Ready to roll" : $"Rolled {d20Result}")</strong>
+                    </div>
+                    <button type="button" disabled="@busy" @onclick="RollD20" aria-label="Roll a twenty-sided die">Roll d20</button>
+                </div>
+                <div class="randomizer-tool">
+                    <div class="randomizer-stage coin-stage" aria-hidden="true">
+                        @if (coinResult is null)
+                        {
+                            <div class="coin idle"><span>?</span></div>
+                        }
+                        else
+                        {
+                            <div @key="coinSequence" class="coin flipping @coinResult.ToLowerInvariant()">
+                                <span class="coin-face coin-heads">H</span>
+                                <span class="coin-face coin-tails">T</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="randomizer-copy">
+                        <span>COIN</span>
+                        <strong role="status" aria-live="polite">@(coinResult is null ? "Ready to flip" : coinResult)</strong>
+                    </div>
+                    <button type="button" disabled="@busy" @onclick="FlipCoin">Flip coin</button>
+                </div>
+            </div>
+            }
+        </section>
 
         <section class="players-grid">
             @foreach (var player in view.Players.OrderBy(player => player.Id == view.MyPlayerId ? 1 : 0))
             {
                 var isMe = player.Id == view.MyPlayerId;
-                <article class="player-board @(isMe ? "my-board" : "")">
+                <article class="player-board @(isMe ? "my-board" : "") @(player.Id == view.ActivePlayerId ? "active-turn" : "")">
                     <div class="player-heading">
-                        <div><span class="seat-tag">@(isMe ? "YOUR SEAT" : "OPPONENT")</span><h2>@player.Name</h2><small>@player.DeckName</small></div>
+                        <div><span class="seat-tag">@(isMe ? "YOUR SEAT" : view.IsSpectator ? "PLAYER" : "OPPONENT")</span><h2>@player.Name @(player.Id == view.ActivePlayerId ? "✦" : "")</h2><small>@player.DeckName</small></div>
                         <div class="life-control">
                             @if (isMe) { <button aria-label="Lose one life" @onclick="() => ChangeLife(-1)">−</button> }
                             <strong>@player.Life</strong>
@@ -88,9 +179,19 @@
                         <span>Library <b>@player.LibraryCount</b></span><span>Hand <b>@player.HandCount</b></span>
                         @foreach (var counter in player.Counters) { <span>@counter.Key <b>@counter.Value</b></span> }
                     </div>
+                    @if (view.Format == "Commander" && isMe && view.Players.Count > 1)
+                    {
+                        <div class="commander-damage">
+                            <span class="zone-title">COMMANDER DAMAGE</span>
+                            @foreach (var opponent in view.Players.Where(item => item.Id != player.Id))
+                            {
+                                <div><span>@opponent.Name <b>@player.CommanderDamage.GetValueOrDefault(opponent.Id)</b></span><button @onclick="() => ChangeCommanderDamage(opponent.Id, -1)">−</button><button @onclick="() => ChangeCommanderDamage(opponent.Id, 1)">+</button></div>
+                            }
+                        </div>
+                    }
                     @if (isMe)
                     {
-                        <div class="player-actions"><button @onclick="Draw">Draw 1</button><button @onclick="Shuffle">Shuffle library</button><input aria-label="Player counter name" placeholder="Counter name" @bind="playerCounterName" @bind:event="oninput" /><button @onclick="() => ChangePlayerCounter(1)">+ counter</button><button @onclick="() => ChangePlayerCounter(-1)">− counter</button></div>
+                        <div class="player-actions"><button @onclick="Draw">Draw 1</button><button @onclick="Mill">Mill 1</button><button @onclick="RevealTop">Reveal top</button><button @onclick="Scry">Scry 1</button><button @onclick="Shuffle">Shuffle</button><button @onclick="Mulligan">Mulligan</button><input aria-label="Player counter name" placeholder="Counter name" @bind="playerCounterName" @bind:event="oninput" /><button @onclick="() => ChangePlayerCounter(1)">+ counter</button><button @onclick="() => ChangePlayerCounter(-1)">− counter</button></div>
                     }
                     <div class="battlefield drop-zone" @ondragover:preventDefault="true" @ondrop="() => Drop(CardZones.Battlefield)">
                         <div class="zone-title">BATTLEFIELD <span>Drop cards here</span></div>
@@ -105,7 +206,7 @@
                         </div>
                     </div>
                     <div class="small-zones">
-                        @foreach (var zone in new[] { CardZones.Graveyard, CardZones.Exile })
+                        @foreach (var zone in VisibleSmallZones(view.Format))
                         {
                             <div class="small-zone drop-zone" @ondragover:preventDefault="true" @ondrop="() => Drop(zone)">
                                 <div class="zone-title">@zone.ToUpperInvariant() <span>@player.Cards.Count(card => card.Zone == zone)</span></div>
@@ -150,9 +251,14 @@
                     {
                         <div class="inspector-actions">
                             @if (selected.Zone == CardZones.Battlefield) { <button @onclick="TapSelected">@(selected.Tapped ? "Untap" : "Tap")</button> }
-                            @foreach (var zone in new[] { CardZones.Battlefield, CardZones.Hand, CardZones.Library, CardZones.Graveyard, CardZones.Exile })
+                            @foreach (var zone in CardDestinations(view.Format).Where(zone => zone != CardZones.Library))
                             {
                                 if (zone != selected.Zone) { <button @onclick="() => MoveSelected(zone)">To @zone</button> }
+                            }
+                            @if (selected.Zone != CardZones.Library)
+                            {
+                                <button @onclick="() => MoveSelected(CardZones.Library, LibraryPlacement.Top)">Top of library</button>
+                                <button @onclick="() => MoveSelected(CardZones.Library, LibraryPlacement.Bottom)">Bottom of library</button>
                             }
                         </div>
                         <div class="counter-editor"><input aria-label="Card counter name" placeholder="Counter name (e.g. +1/+1)" @bind="cardCounterName" @bind:event="oninput" /><button @onclick="() => ChangeCardCounter(1)">+</button><button @onclick="() => ChangeCardCounter(-1)">−</button></div>
@@ -161,20 +267,51 @@
                 </div>
             </aside>
         }
+        @if (scryCard is not null)
+        {
+            <aside class="card-inspector scry-inspector">
+                <button class="close-button" aria-label="Close scry" @onclick="() => scryCard = null">×</button>
+                @if (scryCard.ImageUrl is not null) { <img src="@scryCard.ImageUrl" alt="@scryCard.Name" /> }
+                <div><div class="eyebrow">SCRY 1</div><h2>@scryCard.Name</h2><p>@scryCard.TypeLine</p><p class="oracle-text">@scryCard.OracleText</p>
+                    <div class="inspector-actions"><button @onclick="KeepScryOnTop">Keep on top</button><button @onclick="PutScryOnBottom">Put on bottom</button></div>
+                </div>
+            </aside>
+        }
+        <details class="activity-footer">
+            <summary>
+                <span>Recent activity</span>
+                <small>@(view.Events.FirstOrDefault()?.Message ?? "No table actions yet.")</small>
+            </summary>
+            <div class="activity-log" aria-live="polite">
+                @foreach (var item in view.Events.Take(8))
+                {
+                    <div class="activity-item"><span>@item.Kind</span><p>@item.Message</p></div>
+                }
+            </div>
+        </details>
+    }
+    @if (toastMessage is not null)
+    {
+        <div @key="toastVersion" class="toast-notification @(toastIsError ? "error" : "")"
+             role="@(toastIsError ? "alert" : "status")" aria-live="polite">@toastMessage</div>
     }
     <footer>Card data and images by <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>.</footer>
 </main>
 
 @code {
     [Parameter] public string Id { get; set; } = "";
+    [SupplyParameterFromQuery] public bool Spectate { get; set; }
     private GameInfo? info;
     private GameView? view;
     private CardView? selected;
+    private CardView? scryCard;
     private IDisposable? subscription;
     private string? token;
     private string playerName = "";
     private string deckName = "";
     private string deckText = "";
+    private string transferCode = "";
+    private string? generatedTransferCode;
     private List<SavedDeck> savedDecks = [];
     private string selectedSavedDeck = "";
     private bool saveDeck;
@@ -183,6 +320,16 @@
     private string error = "";
     private bool busy;
     private bool loading = true;
+    private int? d20Result;
+    private string? coinResult;
+    private int d20Sequence;
+    private int coinSequence;
+    private string? toastMessage;
+    private int toastVersion;
+    private bool toastIsError;
+    private bool disposed;
+    private bool refreshRequested;
+    private bool refreshing;
     private PlayerView? MyPlayer => view?.Players.FirstOrDefault(player => player.Id == view.MyPlayerId);
     private bool IsMyCard => selected is not null && MyPlayer?.Cards.Any(card => card.Id == selected.Id) == true;
 
@@ -197,8 +344,9 @@
         if (!firstRender) return;
         token = await JS.InvokeAsync<string?>("playMagic.getToken", Id);
         savedDecks = await JS.InvokeAsync<List<SavedDeck>>("playMagic.getSavedDecks");
-        if (token is not null) view = await Games.GetViewAsync(Id, token);
-        subscription = Notifier.Subscribe(Id, () => _ = InvokeAsync(async () => { await Refresh(); StateHasChanged(); }));
+        if (Spectate) view = await Games.GetSpectatorViewAsync(Id);
+        else if (token is not null) view = await Games.GetViewAsync(Id, token);
+        subscription = Notifier.Subscribe(Id, QueueRefresh);
         loading = false;
         StateHasChanged();
     }
@@ -227,6 +375,24 @@
         finally { busy = false; }
     }
 
+    private async Task ClaimSeat()
+    {
+        busy = true;
+        error = "";
+        try
+        {
+            var result = await JS.InvokeAsync<GameApiResponse>("playMagic.post",
+                $"/api/games/{Uri.EscapeDataString(Id)}/claim-seat", new { transferCode });
+            if (result.Value is null) { error = result.Error ?? "Could not claim that seat."; return; }
+            token = result.Value;
+            Spectate = false;
+            await JS.InvokeVoidAsync("playMagic.setToken", Id, token);
+            await Refresh();
+        }
+        catch (JSException) { error = "Could not claim that seat. Please try again."; }
+        finally { busy = false; }
+    }
+
     private void SelectSavedDeck(ChangeEventArgs args)
     {
         selectedSavedDeck = args.Value?.ToString() ?? "";
@@ -246,13 +412,68 @@
 
     private async Task Refresh()
     {
+        if (Spectate) { view = await Games.GetSpectatorViewAsync(Id); return; }
         if (token is null) { info = await Games.GetInfoAsync(Id); return; }
         view = await Games.GetViewAsync(Id, token);
         if (selected is not null)
             selected = view?.Players.SelectMany(player => player.Cards).FirstOrDefault(card => card.Id == selected.Id);
     }
 
-    private Task CopyLink() => JS.InvokeVoidAsync("playMagic.copyLink", Navigation.Uri).AsTask();
+    private void QueueRefresh()
+    {
+        if (disposed) return;
+        _ = InvokeAsync(async () =>
+        {
+            refreshRequested = true;
+            if (refreshing) return;
+            refreshing = true;
+            try
+            {
+                while (refreshRequested && !disposed)
+                {
+                    refreshRequested = false;
+                    await Refresh();
+                    StateHasChanged();
+                }
+            }
+            catch (Exception exception) when (!disposed)
+            {
+                Logger.LogWarning(exception, "Could not refresh game {GameId}", Id);
+            }
+            finally { refreshing = false; }
+        });
+    }
+
+    private Task CopyLink() => CopyToClipboard(
+        $"{Navigation.BaseUri.TrimEnd('/')}/game/{Uri.EscapeDataString(Id)}", "Invite link copied");
+    private Task CopySpectatorLink() => CopyToClipboard(
+        $"{Navigation.BaseUri.TrimEnd('/')}/game/{Uri.EscapeDataString(Id)}?spectate=true", "Spectator link copied");
+
+    private async Task CopyToClipboard(string url, string confirmation)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("playMagic.copyLink", url, "table-options-menu");
+            await ShowToast(confirmation);
+        }
+        catch (JSException)
+        {
+            await ShowToast("Could not copy the link", isError: true);
+        }
+    }
+
+    private async Task ShowToast(string message, bool isError = false)
+    {
+        var version = ++toastVersion;
+        toastMessage = message;
+        toastIsError = isError;
+        StateHasChanged();
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+        if (disposed || version != toastVersion) return;
+        toastMessage = null;
+        StateHasChanged();
+    }
+    private void WatchGame() => Navigation.NavigateTo($"/game/{Uri.EscapeDataString(Id)}?spectate=true", forceLoad: true);
     private async Task Drop(string zone)
     {
         var cardId = await JS.InvokeAsync<string?>("playMagic.getDraggedCardId");
@@ -262,12 +483,61 @@
     }
     private void Select(CardView card) => selected = card;
     private Task Draw() => Act(() => Games.DrawAsync(Id, token!));
+    private Task Mill() => Act(() => Games.MillAsync(Id, token!));
+    private Task RevealTop() => Act(() => Games.RevealTopAsync(Id, token!));
     private Task Shuffle() => Act(() => Games.ShuffleAsync(Id, token!));
+    private async Task Mulligan()
+    {
+        if (await JS.InvokeAsync<bool>("playMagic.confirm", "Shuffle every card you own into your library and draw seven?"))
+            await Act(() => Games.MulliganAsync(Id, token!));
+    }
+    private async Task Scry()
+    {
+        error = "";
+        try { scryCard = await Games.ScryAsync(Id, token!); if (scryCard is null) error = "Your library is empty."; }
+        catch (GameActionException exception) { error = exception.Message; }
+    }
+    private Task KeepScryOnTop() { scryCard = null; return Task.CompletedTask; }
+    private async Task PutScryOnBottom()
+    {
+        if (scryCard is null) return;
+        var card = scryCard;
+        scryCard = null;
+        await Act(() => Games.MoveCardAsync(Id, token!, card.Id, CardZones.Library, LibraryPlacement.Bottom));
+    }
     private Task ChangeLife(int delta) => Act(() => Games.AdjustLifeAsync(Id, token!, delta));
     private Task ChangePlayerCounter(int delta) => Act(() => Games.AdjustPlayerCounterAsync(Id, token!, playerCounterName, delta));
     private Task ChangeCardCounter(int delta) => selected is null ? Task.CompletedTask : Act(() => Games.AdjustCardCounterAsync(Id, token!, selected.Id, cardCounterName, delta));
+    private Task ChangeCommanderDamage(string sourcePlayerId, int delta) => Act(() => Games.AdjustCommanderDamageAsync(Id, token!, sourcePlayerId, delta));
     private Task TapSelected() => selected is null ? Task.CompletedTask : Act(() => Games.ToggleTappedAsync(Id, token!, selected.Id));
-    private Task MoveSelected(string zone) => selected is null ? Task.CompletedTask : Act(() => Games.MoveCardAsync(Id, token!, selected.Id, zone));
+    private Task MoveSelected(string zone, LibraryPlacement placement = LibraryPlacement.Top) => selected is null ? Task.CompletedTask : Act(() => Games.MoveCardAsync(Id, token!, selected.Id, zone, placement));
+    private async Task RollD20()
+    {
+        await Act(async () => d20Result = await Games.RollDieAsync(Id, token!, 20));
+        d20Sequence++;
+    }
+
+    private async Task FlipCoin()
+    {
+        await Act(async () => coinResult = await Games.FlipCoinAsync(Id, token!));
+        coinSequence++;
+    }
+    private Task AdvanceTurn() => Act(() => Games.AdvanceTurnAsync(Id, token!));
+    private Task TakeTurn(string playerId) => Act(() => Games.SetActivePlayerAsync(Id, token!, playerId));
+    private async Task CreateTransferCode()
+    {
+        error = "";
+        try { generatedTransferCode = await Games.CreateSeatTransferAsync(Id, token!); }
+        catch (GameActionException exception) { error = exception.Message; }
+    }
+
+    private static IEnumerable<string> VisibleSmallZones(string format) => format == "Commander"
+        ? [CardZones.Graveyard, CardZones.Exile, CardZones.Commander]
+        : [CardZones.Graveyard, CardZones.Exile];
+
+    private static IEnumerable<string> CardDestinations(string format) => format == "Commander"
+        ? [CardZones.Battlefield, CardZones.Hand, CardZones.Library, CardZones.Graveyard, CardZones.Exile, CardZones.Commander]
+        : [CardZones.Battlefield, CardZones.Hand, CardZones.Library, CardZones.Graveyard, CardZones.Exile];
 
     private async Task Act(Func<Task> action)
     {
@@ -276,6 +546,10 @@
         catch (GameActionException exception) { error = exception.Message; }
     }
 
-    public void Dispose() => subscription?.Dispose();
+    public void Dispose()
+    {
+        disposed = true;
+        subscription?.Dispose();
+    }
 
 }

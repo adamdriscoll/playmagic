@@ -10,6 +10,7 @@ public sealed class PlayMagicDbContext(DbContextOptions<PlayMagicDbContext> opti
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Player> Players => Set<Player>();
     public DbSet<GameCard> GameCards => Set<GameCard>();
+    public DbSet<GameEvent> GameEvents => Set<GameEvent>();
     public DbSet<PublicStatistics> PublicStatistics => Set<PublicStatistics>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -21,6 +22,8 @@ public sealed class PlayMagicDbContext(DbContextOptions<PlayMagicDbContext> opti
         modelBuilder.Entity<Player>().HasOne<Game>().WithMany().HasForeignKey(player => player.GameId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<GameCard>().HasOne<Player>().WithMany().HasForeignKey(card => card.PlayerId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<GameCard>().HasIndex(card => new { card.PlayerId, card.Zone, card.SortOrder });
+        modelBuilder.Entity<GameEvent>().HasOne<Game>().WithMany().HasForeignKey(item => item.GameId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<GameEvent>().HasIndex(item => new { item.GameId, item.Id });
     }
 }
 
@@ -65,6 +68,8 @@ public sealed class Game
     public string Format { get; set; } = "Regular";
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTime LastActivityUtc { get; set; } = DateTime.UtcNow;
+    public string? ActivePlayerId { get; set; }
+    public int TurnNumber { get; set; } = 1;
 }
 
 /// <summary>An anonymous seat in one game.</summary>
@@ -77,6 +82,9 @@ public sealed class Player
     public string DeckName { get; set; } = "";
     public int Life { get; set; }
     public string CountersJson { get; set; } = "{}";
+    public string CommanderDamageJson { get; set; } = "{}";
+    public string? TransferTokenHash { get; set; }
+    public DateTimeOffset? TransferExpiresUtc { get; set; }
     public DateTimeOffset JoinedUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -96,6 +104,18 @@ public sealed class GameCard
     public string CountersJson { get; set; } = "{}";
 }
 
+/// <summary>A recent public action shown to everyone watching a table.</summary>
+public sealed class GameEvent
+{
+    public long Id { get; set; }
+    public string GameId { get; set; } = "";
+    public string? PlayerId { get; set; }
+    public string PlayerName { get; set; } = "";
+    public string Kind { get; set; } = "Action";
+    public string Message { get; set; } = "";
+    public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
 /// <summary>The simple zones supported by the tabletop.</summary>
 public static class CardZones
 {
@@ -104,6 +124,7 @@ public static class CardZones
     public const string Battlefield = "Battlefield";
     public const string Graveyard = "Graveyard";
     public const string Exile = "Exile";
+    public const string Commander = "Commander";
 
-    public static bool IsValid(string zone) => zone is Library or Hand or Battlefield or Graveyard or Exile;
+    public static bool IsValid(string zone) => zone is Library or Hand or Battlefield or Graveyard or Exile or Commander;
 }
